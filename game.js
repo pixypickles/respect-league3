@@ -228,16 +228,43 @@ function safeCpuPassTarget(p){
 function bestPassTarget(p, inputDir=null) {
   const mates = teamPlayers(p.team).filter(q=>q!==p && q.role!=="gk");
   if(!mates.length) return null;
-  if(inputDir && Math.hypot(inputDir.x,inputDir.y)>.2) {
-    let best=null, bs=-999;
+
+  if(inputDir && Math.hypot(inputDir.x,inputDir.y)>.16) {
+    const idir=norm(inputDir.x,inputDir.y);
+    let best=null, bestScore=-9999;
+
     for(const q of mates) {
-      const d=norm(q.x-p.x,q.y-p.y);
-      const align=d.x*inputDir.x+d.y*inputDir.y;
-      const score=align*2-dist(p,q)/700;
-      if(score>bs){bs=score;best=q;}
+      const vx=q.x-p.x, vy=q.y-p.y;
+      const d=Math.hypot(vx,vy)||1;
+      const dir={x:vx/d,y:vy/d};
+      const align=dir.x*idir.x+dir.y*idir.y; // -1..1
+
+      // Strongly favor players inside the stick direction cone.
+      // Distance matters, but direction matters much more.
+      let score=align*5.5 - d/520;
+
+      // Give a noticeable bonus when inside roughly 50 degrees.
+      if(align>.64) score+=2.2;
+
+      // Slightly favor open receivers.
+      let nearestEnemy=999;
+      for(const e of opponents(p.team)){
+        if(e.role==="gk") continue;
+        nearestEnemy=Math.min(nearestEnemy,dist(q,e));
+      }
+      score+=Math.min(nearestEnemy,180)/180*.45;
+
+      if(score>bestScore){
+        bestScore=score;
+        best=q;
+      }
     }
+
+    // If stick direction is very far from every teammate, still choose the closest
+    // one to that direction rather than ignoring the stick completely.
     return best;
   }
+
   let best=null, bs=Infinity;
   for(const q of mates){
     const d=dist(p,q);
@@ -245,113 +272,6 @@ function bestPassTarget(p, inputDir=null) {
   }
   return best;
 }
-
-
-function nearbyLooseBallFor(p, radius=84) {
-  return !ball.owner && ball.z<34 && dist(p,ball)<=radius;
-}
-
-function looseBallPassTarget(p) {
-  const stickMag = p.controlled ? Math.hypot(input.sx,input.sy) : 0;
-  let target = null;
-
-  if(p.controlled && stickMag>.18) {
-    target = bestPassTarget(p,{x:input.sx,y:input.sy});
-  } else if(!p.controlled) {
-    target = safeCpuPassTarget(p);
-  } else {
-    target = bestPassTarget(p);
-  }
-
-  // Don't blindly clear forward when there is no teammate to receive.
-  if(!target) return null;
-
-  // For direct loose-ball passes, reject absurdly distant or tightly marked targets.
-  const d=dist(p,target);
-  if(d>520) return null;
-
-  const enemyNear=Math.min(...opponents(p.team)
-    .filter(e=>e.role!=="gk")
-    .map(e=>dist(target,e)));
-  if(enemyNear<45) return null;
-
-  return target;
-}
-
-function kickNearbyLooseBall(p, kind="pass") {
-  if(!nearbyLooseBallFor(p,82)) return false;
-
-  const stickMag = p.controlled ? Math.hypot(input.sx,input.sy) : 0;
-  let dx = stickMag>.18 ? input.sx : p.dirX;
-  let dy = stickMag>.18 ? input.sy : p.dirY;
-  if(Math.hypot(dx,dy)<.1){ dx=p.team==="blue"?1:-1; dy=0; }
-
-  p.x = clamp(p.x,COURT.x+25,COURT.x+COURT.w-25);
-  p.y = clamp(p.y,COURT.y+25,COURT.y+COURT.h-25);
-
-  if(kind==="pass") {
-    const target = looseBallPassTarget(p);
-
-    // PASS is a pass, not a generic clearance. If nobody is available, do nothing.
-    if(!target) {
-      if(p.controlled) showMessage("NO PASS",.28);
-      return false;
-    }
-
-    target.receiveIntent=true;
-    const tx=target.x+target.dirX*42;
-    const ty=target.y+target.dirY*42;
-    const n=norm(tx-ball.x,ty-ball.y);
-
-    ball.lastTouch=p;
-    ball.passFrom=p;
-    ball.passTarget=target;
-    ball.owner=null;
-    ball.touchGrace=.12;
-    ball.protectedTeam=p.team;
-    ball.vx=n.x*380;
-    ball.vy=n.y*380;
-    ball.vz=24;
-    ball.shot=false;
-    ball.power=380;
-
-    if(p.controlled) input.postKickNoAutoTrap=.50;
-    p.kickAnim=.18;
-    p.cooldown=.16;
-
-    if(!p.controlled){
-      const attack=p.team==="blue"?1:-1;
-      p.afterPassRunTimer=.95;
-      p.afterPassX=clamp(p.x+attack*135,COURT.x+70,COURT.x+COURT.w-70);
-      p.afterPassY=clamp(p.y+(Math.sign(p.y-H/2)||1)*65,COURT.y+60,COURT.y+COURT.h-60);
-    }
-    return true;
-  }
-
-  if(kind==="shot") {
-    const n=norm(dx,dy);
-
-    ball.lastTouch=p;
-    ball.passFrom=p;
-    ball.passTarget=null;
-    ball.owner=null;
-    ball.touchGrace=.12;
-    ball.protectedTeam=p.team;
-    ball.vx=n.x*520;
-    ball.vy=n.y*520;
-    ball.vz=28;
-    ball.shot=true;
-    ball.power=520;
-
-    if(p.controlled) input.postKickNoAutoTrap=.50;
-    p.kickAnim=.18;
-    p.cooldown=.16;
-    return true;
-  }
-
-  return false;
-}
-
 
 function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
   const n=norm(dx,dy);
@@ -766,12 +686,16 @@ function updateControlled(p,dt) {
     // Core mechanic: holding trap is required to keep dribbling.
     if(input.trap || p.autoControlTimer>0 || (input.shootDown && input.shootBallLock)) {
       const n=norm(p.dirX,p.dirY);
-      ball.x=p.x+n.x*31; ball.y=p.y+n.y*31; ball.z=0;
-      ball.vx=p.vx; ball.vy=p.vy;
+      // Ball stays at the player's feet, slightly in front of the body.
+      ball.x=p.x+n.x*22;
+      ball.y=p.y+18+n.y*12;
+      ball.z=0;
+      ball.vx=p.vx;
+      ball.vy=p.vy;
     } else if(p.possessionTime>.10) {
       const n=norm(p.dirX,p.dirY);
       ball.owner=null;
-      ball.x=p.x+n.x*30; ball.y=p.y+n.y*30;
+      ball.x=p.x+n.x*24; ball.y=p.y+18+n.y*12;
       ball.vx=p.vx*.78+n.x*70; ball.vy=p.vy*.78+n.y*70; ball.vz=10;
       showMessage("BALL LOOSE",.28);
     }
@@ -973,7 +897,11 @@ function aiWithBall(p,dt) {
   const carrySpeed = p.team==="red" ? .58 : .72;
   p.vx=lerp(p.vx,n.x*p.speed*carrySpeed,dt*4);
   p.vy=lerp(p.vy,n.y*p.speed*carrySpeed,dt*4);
-  ball.x=p.x+n.x*31;ball.y=p.y+n.y*31;ball.z=0;ball.vx=p.vx;ball.vy=p.vy;
+  ball.x=p.x+n.x*22;
+  ball.y=p.y+18+n.y*12;
+  ball.z=0;
+  ball.vx=p.vx;
+  ball.vy=p.vy;
 }
 
 function updateAI(p,dt) {
@@ -1158,7 +1086,10 @@ function updatePhysics(dt) {
 
   if(ball.owner) {
     const o=ball.owner;
-    if(o.role==="gk") { ball.x=o.x+(o.team==="blue"?24:-24);ball.y=o.y; }
+    if(o.role==="gk") {
+      ball.x=o.x+(o.team==="blue"?20:-20);
+      ball.y=o.y+14;
+    }
   } else {
     ball.x+=ball.vx*dt;ball.y+=ball.vy*dt;
     ball.z+=ball.vz*dt;
@@ -1334,18 +1265,29 @@ function drawPlayer(p) {
   ctx.strokeStyle=SKIN;ctx.lineWidth=6;
   ctx.beginPath();ctx.moveTo(-10,-7);ctx.lineTo(-19,8+swing*.35);ctx.moveTo(11,-7);ctx.lineTo(20,7-swing*.35);ctx.stroke();
 
-  // Head stays upright, but CPU can glance left/right while scanning.
-  const headShift = p.controlled ? 0 : p.headLook*4.5;
+  // Head position stays fixed. Only eyes/face glance left/right while scanning.
+  const eyeShift = p.controlled ? 0 : p.headLook*3.2;
+
   ctx.fillStyle=SKIN;
   ctx.beginPath();
-  ctx.arc(headShift,-26,13,0,Math.PI*2);
+  ctx.arc(0,-26,13,0,Math.PI*2);
   ctx.fill();
 
   ctx.fillStyle="#111827";
   ctx.beginPath();
-  ctx.arc(headShift-4,-30,1.7,0,Math.PI*2);
-  ctx.arc(headShift+4,-30,1.7,0,Math.PI*2);
+  ctx.arc(-4+eyeShift,-30,1.7,0,Math.PI*2);
+  ctx.arc(4+eyeShift,-30,1.7,0,Math.PI*2);
   ctx.fill();
+
+  // Tiny nose/face-direction cue so the scan is readable without moving the head.
+  if(!p.controlled && Math.abs(p.headLook)>.08){
+    ctx.strokeStyle="rgba(60,40,30,.55)";
+    ctx.lineWidth=1.4;
+    ctx.beginPath();
+    ctx.moveTo(eyeShift*.45,-25);
+    ctx.lineTo(eyeShift*.8,-23);
+    ctx.stroke();
+  }
 
   if(p.controlled) {
     ctx.strokeStyle="#fde047";ctx.lineWidth=4;
@@ -1372,6 +1314,56 @@ function drawBall() {
   ctx.restore();
 }
 
+
+function drawShotCharge() {
+  if(!input.shootDown) return;
+
+  const btn=document.getElementById("shootBtn");
+  if(!btn) return;
+
+  const r=btn.getBoundingClientRect();
+  const canvasRect=canvas.getBoundingClientRect();
+
+  // Convert CSS pixel position to canvas coordinates.
+  const sx=W/canvasRect.width;
+  const sy=H/canvasRect.height;
+  const cx=(r.left+r.width/2-canvasRect.left)*sx;
+  const cy=(r.top+r.height/2-canvasRect.top)*sy;
+  const radius=(r.width*.62)*sx;
+
+  const held=(performance.now()-input.shootStarted)/1000;
+  const t=clamp(held/.70,0,1);
+
+  ctx.save();
+  ctx.lineCap="round";
+
+  // background ring
+  ctx.strokeStyle="rgba(255,255,255,.24)";
+  ctx.lineWidth=8;
+  ctx.beginPath();
+  ctx.arc(cx,cy,radius,0,Math.PI*2);
+  ctx.stroke();
+
+  // charge progress ring
+  ctx.strokeStyle="rgba(255,255,255,.92)";
+  ctx.lineWidth=8;
+  ctx.beginPath();
+  ctx.arc(cx,cy,radius,-Math.PI/2,-Math.PI/2+Math.PI*2*t);
+  ctx.stroke();
+
+  // Tiny center label showing shot type range.
+  ctx.fillStyle="rgba(255,255,255,.95)";
+  ctx.font="900 18px system-ui";
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+  let label="LOOP";
+  if(held>=.095 && held<=.34) label="SHOT";
+  if(held>.34) label="POWER";
+  ctx.fillText(label,cx,cy-radius-18);
+
+  ctx.restore();
+}
+
 function draw() {
   ctx.clearRect(0,0,W,H);
   drawCourt();
@@ -1389,6 +1381,8 @@ function draw() {
     ctx.lineWidth=6;
     ctx.beginPath();ctx.arc(c.x,c.y,35+8*(1-closeness),0,Math.PI*2);ctx.stroke();
   }
+
+  drawShotCharge();
 }
 
 function frame(now) {

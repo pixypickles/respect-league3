@@ -164,3 +164,12 @@ body {
   pointer-events: none;
   white-space: nowrap;
 }
+
+
+/* v14: charge feedback */
+#shootBtn {
+  overflow: visible;
+}
+#shootBtn.active {
+  filter: brightness(1.08);
+}
