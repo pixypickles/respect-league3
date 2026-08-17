@@ -846,7 +846,7 @@ function attemptTrap(p, dt) {
 
     // Auto-control is only for genuinely slow, unclaimed loose balls.
     // It must never steal priority from PASS / SHOT input.
-    const slowLoose = speed < 115 && ball.z < 14 && !ball.passTarget;
+    const slowLoose = speed < 115 && ball.z < 14 && !ball.passTarget && p.autoControlTimer<=0;
 
     if(input.trap || (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
       ball.owner=p;
@@ -857,11 +857,16 @@ function attemptTrap(p, dt) {
       ball.touchGrace=.18;
       ball.protectedTeam=p.team;
       p.possessionTime=0;
-      p.kickAnim = input.trap ? .16 : .02;
+      // Manual TRAP visibly moves the foot. AUTO TRAP is only ball control:
+      // absolutely no kick animation, otherwise repeated slow-ball control makes one leg flap.
+      p.kickAnim = input.trap ? .16 : 0;
 
       if(slowLoose && !input.trap){
         // Brief settle only. The player can immediately PASS or SHOT.
-        p.autoControlTimer=.18;
+        p.autoControlTimer=.28;
+        p.kickAnim=0;
+        p.slide=0;
+        p.shoulder=0;
         showMessage("AUTO TRAP",.22);
       } else {
         showMessage(speed>500?"SUPER TRAP!":"TRAP!",.38);
@@ -1491,8 +1496,6 @@ function updatePhysics(dt) {
     p.shoulder=Math.max(0,p.shoulder-dt);
     p.stagger=Math.max(0,p.stagger-dt);
     p.kickAnim=Math.max(0,p.kickAnim-dt);
-    // Auto-trap uses a tiny value; clear it quickly so one foot does not flap repeatedly.
-    if(p.kickAnim>0 && p.kickAnim<.04) p.kickAnim=Math.max(0,p.kickAnim-dt*5);
     p.slide=Math.max(0,p.slide-dt);
 
     if(p.slide<=0) {
