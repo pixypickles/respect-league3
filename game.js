@@ -6,6 +6,38 @@ const ctx = canvas.getContext("2d");
 const scoreEl = document.getElementById("score");
 const clockEl = document.getElementById("clock");
 const msgEl = document.getElementById("message");
+const debugV47=document.getElementById("debugV47");
+let dbgFrames47=0,dbgUpdates47=0,dbgDraws47=0,dbgLast47=performance.now();
+
+function dbgError47(kind,e){
+  if(!debugV47) return;
+  const msg=e&&e.stack?e.stack:String(e);
+  debugV47.classList.add("err");
+  debugV47.textContent=kind+"\n"+msg;
+}
+
+window.addEventListener("error",e=>{
+  dbgError47("ERROR",e.error||(e.message+" @ "+e.filename+":"+e.lineno+":"+e.colno));
+});
+window.addEventListener("unhandledrejection",e=>{
+  dbgError47("PROMISE",e.reason);
+});
+
+setInterval(()=>{
+  if(!debugV47 || debugV47.classList.contains("err")) return;
+  const now=performance.now();
+  const sec=Math.max(.001,(now-dbgLast47)/1000);
+  const fps=Math.round(dbgFrames47/sec);
+  debugV47.textContent=
+    "v47 LIVE | FPS "+fps+
+    " | F "+dbgFrames47+
+    " U "+dbgUpdates47+
+    " D "+dbgDraws47+
+    " | "+(typeof gamePhase!=="undefined"?gamePhase:"?");
+  dbgFrames47=dbgUpdates47=dbgDraws47=0;
+  dbgLast47=now;
+},500);
+
 const menuOverlayEl = document.getElementById("menuOverlay");
 const teamScreenEl = document.getElementById("teamScreen");
 const modeScreenEl = document.getElementById("modeScreen");
@@ -1622,6 +1654,7 @@ function goal(who) {
 }
 
 function update(dt) {
+  dbgUpdates47++;
   if(gamePhase!=="match" && gamePhase!=="practice") return;
   if(gamePhase==="practice"){
     advanceTutorialIfNeeded();
@@ -1824,6 +1857,7 @@ function drawBall() {
 }
 
 function draw() {
+  dbgDraws47++;
   ctx.clearRect(0,0,W,H);
   drawCourt();
 
@@ -1843,6 +1877,7 @@ function draw() {
 }
 
 function frame(now) {
+  dbgFrames47++;
   const dt=Math.min(.033,(now-last)/1000);
   last=now;elapsed+=dt;
   update(dt);draw();
