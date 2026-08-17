@@ -1,3 +1,27 @@
+
+const debugV48=document.getElementById("debugV48");
+debugV48.textContent="v48 JS STARTED";
+let dbgF48=0,dbgU48=0,dbgD48=0,dbgLast48=performance.now(),dbgTick48=0;
+
+function dbgErr48(kind,e){
+  const msg=e&&e.stack?e.stack:String(e);
+  debugV48.style.background="#b00000";
+  debugV48.style.color="#fff";
+  debugV48.textContent=kind+"\n"+msg;
+}
+window.addEventListener("error",e=>dbgErr48("ERROR",e.error||(e.message+" @ "+e.filename+":"+e.lineno+":"+e.colno)));
+window.addEventListener("unhandledrejection",e=>dbgErr48("PROMISE",e.reason));
+
+setInterval(()=>{
+  dbgTick48++;
+  if(debugV48.style.background==="rgb(176, 0, 0)" || debugV48.style.background==="#b00000") return;
+  const now=performance.now(), sec=Math.max(.001,(now-dbgLast48)/1000);
+  debugV48.textContent="v48 TICK "+dbgTick48+
+    " | FPS "+Math.round(dbgF48/sec)+
+    " | F "+dbgF48+" U "+dbgU48+" D "+dbgD48;
+  dbgF48=dbgU48=dbgD48=0; dbgLast48=now;
+},500);
+
 (() => {
 "use strict";
 
@@ -6,38 +30,6 @@ const ctx = canvas.getContext("2d");
 const scoreEl = document.getElementById("score");
 const clockEl = document.getElementById("clock");
 const msgEl = document.getElementById("message");
-const debugV47=document.getElementById("debugV47");
-let dbgFrames47=0,dbgUpdates47=0,dbgDraws47=0,dbgLast47=performance.now();
-
-function dbgError47(kind,e){
-  if(!debugV47) return;
-  const msg=e&&e.stack?e.stack:String(e);
-  debugV47.classList.add("err");
-  debugV47.textContent=kind+"\n"+msg;
-}
-
-window.addEventListener("error",e=>{
-  dbgError47("ERROR",e.error||(e.message+" @ "+e.filename+":"+e.lineno+":"+e.colno));
-});
-window.addEventListener("unhandledrejection",e=>{
-  dbgError47("PROMISE",e.reason);
-});
-
-setInterval(()=>{
-  if(!debugV47 || debugV47.classList.contains("err")) return;
-  const now=performance.now();
-  const sec=Math.max(.001,(now-dbgLast47)/1000);
-  const fps=Math.round(dbgFrames47/sec);
-  debugV47.textContent=
-    "v47 LIVE | FPS "+fps+
-    " | F "+dbgFrames47+
-    " U "+dbgUpdates47+
-    " D "+dbgDraws47+
-    " | "+(typeof gamePhase!=="undefined"?gamePhase:"?");
-  dbgFrames47=dbgUpdates47=dbgDraws47=0;
-  dbgLast47=now;
-},500);
-
 const menuOverlayEl = document.getElementById("menuOverlay");
 const teamScreenEl = document.getElementById("teamScreen");
 const modeScreenEl = document.getElementById("modeScreen");
@@ -1654,7 +1646,7 @@ function goal(who) {
 }
 
 function update(dt) {
-  dbgUpdates47++;
+  dbgU48++;
   if(gamePhase!=="match" && gamePhase!=="practice") return;
   if(gamePhase==="practice"){
     advanceTutorialIfNeeded();
@@ -1857,7 +1849,7 @@ function drawBall() {
 }
 
 function draw() {
-  dbgDraws47++;
+  dbgD48++;
   ctx.clearRect(0,0,W,H);
   drawCourt();
 
@@ -1877,7 +1869,7 @@ function draw() {
 }
 
 function frame(now) {
-  dbgFrames47++;
+  dbgF48++;
   const dt=Math.min(.033,(now-last)/1000);
   last=now;elapsed+=dt;
   update(dt);draw();
