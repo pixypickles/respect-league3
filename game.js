@@ -67,7 +67,9 @@ function makePlayer(team, x,y, role="field", controlled=false) {
     autoControlTimer:0,
     afterPassRunTimer:0,
     afterPassX:x,
-    afterPassY:y
+    afterPassY:y,
+    shoulder:0,
+    stagger:0
   };
 }
 
@@ -417,7 +419,7 @@ function doPass(p, forcedTarget=null) {
 function playerShoot(p, chargeSec) {
   // Direct shot from a nearby loose ball is allowed without trapping first.
   if(ball.owner!==p) {
-    if(nearbyLooseBallFor(p,82)) {
+    if(nearbyLooseBallFor(p,104)) {
       const stickMag=Math.hypot(input.sx,input.sy);
       let dx=stickMag>.18?input.sx:p.dirX;
       let dy=stickMag>.18?input.sy:p.dirY;
@@ -582,6 +584,54 @@ function slide(actor) {
   actor.vx=n.x*410; actor.vy=n.y*410;
 }
 
+
+function shoulderCharge(actor) {
+  if(!actor || actor.role==="gk" || actor.cooldown>0 || actor.shoulder>0 || actor.stagger>0) return false;
+
+  const enemies=opponents(actor.team)
+    .filter(e=>e.role!=="gk" && e.stagger<=0)
+    .sort((a,b)=>dist(actor,a)-dist(actor,b));
+
+  const target=enemies[0];
+  if(!target || dist(actor,target)>78) return false;
+
+  const face=norm(actor.dirX,actor.dirY);
+  const to=norm(target.x-actor.x,target.y-actor.y);
+  const alignment=face.x*to.x+face.y*to.y;
+
+  // Charge only if the target is generally in front of the player.
+  if(alignment<-.1) return false;
+
+  actor.shoulder=.20;
+  actor.cooldown=.42;
+
+  const n=norm(target.x-actor.x,target.y-actor.y);
+  actor.vx=n.x*310;
+  actor.vy=n.y*310;
+
+  target.stagger=.48;
+  target.vx=n.x*210;
+  target.vy=n.y*210;
+
+  // If the target has the ball, force a loose touch.
+  if(ball.owner===target) {
+    ball.owner=null;
+    ball.passTarget=null;
+    ball.x=target.x+n.x*24;
+    ball.y=target.y+n.y*24;
+    ball.z=6;
+    ball.vx=n.x*230+actor.dirX*70;
+    ball.vy=n.y*230+actor.dirY*70;
+    ball.vz=42;
+    ball.lastTouch=actor;
+    ball.touchGrace=.16;
+    ball.protectedTeam=actor.team;
+  }
+
+  showMessage("SHOULDER!",.32);
+  return true;
+}
+
 function checkSlideSteal(p) {
   if(p.slide<=0) return;
   if(ball.owner && ball.owner.team!==p.team && dist(p,ball.owner)<50) {
@@ -609,13 +659,25 @@ function offBallAction(team, type) {
     for(const p of candidates) if(p!==main && ((owner&&dist(p,owner)<68)||(!owner&&dist(p,ball)<68))) {
       if(defensivePoke(p)) return;
     }
-  } else if(type==="slide") {
-    if(owner && owner.team!==team && dist(main,owner)<120){slide(main);return;}
-    for(const p of candidates) if(p!==main && owner && owner.team!==team && dist(p,owner)<100){slide(p);return;}
+  } else if(type==="shoulder") {
+    if(owner && owner.team!==team && dist(main,owner)<92){
+      if(shoulderCharge(main)) return;
+    }
+    for(const p of candidates){
+      if(p!==main && owner && owner.team!==team && dist(p,owner)<82){
+        if(shoulderCharge(p)) return;
+      }
+    }
   }
 }
 
 function updateControlled(p,dt) {
+  if(p.stagger>0){
+    p.vx*=Math.pow(.18,dt);
+    p.vy*=Math.pow(.18,dt);
+    return;
+  }
+
   let mag=Math.hypot(input.sx,input.sy);
   let dx=input.sx,dy=input.sy;
   if(mag>1){dx/=mag;dy/=mag;mag=1;}
@@ -630,6 +692,24 @@ function updateControlled(p,dt) {
   const response=bursting?18:10;
   p.vx=lerp(p.vx,dx*max,clamp(dt*response,0,1));
   p.vy=lerp(p.vy,dy*max,clamp(dt*response,0,1));
+
+  // While SHOT is being held, a nearby loose ball can be picked up into the shot action.
+  // This makes charging a shot much less frame-perfect.
+  if(input.shootDown && !input.shootBallLock && !ball.owner && nearbyLooseBallFor(p,102)) {
+    input.shootBallLock=true;
+  }
+
+  if(input.shootDown && input.shootBallLock && !ball.owner && nearbyLooseBallFor(p,92) && ball.z<32) {
+    const speed=Math.hypot(ball.vx,ball.vy);
+    if(speed<220){
+      ball.owner=p;
+      ball.passTarget=null;
+      ball.vx=ball.vy=ball.vz=0;
+      ball.z=0;
+      p.possessionTime=0;
+      p.autoControlTimer=.16;
+    }
+  }
 
   if(ball.owner===p) {
     p.possessionTime+=dt;
@@ -840,6 +920,11 @@ function aiWithBall(p,dt) {
 
 function updateAI(p,dt) {
   if(p.role==="gk") return;
+  if(p.stagger>0){
+    p.vx*=Math.pow(.18,dt);
+    p.vy*=Math.pow(.18,dt);
+    return;
+  }
   if(p.controlled){updateControlled(p,dt);return;}
   if(p.slide>0)return;
 
@@ -934,6 +1019,8 @@ function updatePhysics(dt) {
     p.receiveLock=Math.max(0,p.receiveLock-dt);
     p.autoControlTimer=Math.max(0,p.autoControlTimer-dt);
     p.afterPassRunTimer=Math.max(0,p.afterPassRunTimer-dt);
+    p.shoulder=Math.max(0,p.shoulder-dt);
+    p.stagger=Math.max(0,p.stagger-dt);
     p.kickAnim=Math.max(0,p.kickAnim-dt);
     p.slide=Math.max(0,p.slide-dt);
 
@@ -1109,6 +1196,37 @@ function drawPlayer(p) {
   ctx.save();
   ctx.translate(p.x,p.y);
   // Character artwork stays upright on screen. Movement direction does not rotate the head/body.
+  if(p.stagger>0) {
+    ctx.rotate(Math.sin(elapsed*35)*.12);
+    ctx.strokeStyle=DARK;ctx.lineWidth=7;ctx.lineCap="round";
+    ctx.beginPath();
+    ctx.moveTo(-4,10);ctx.lineTo(-15,30);
+    ctx.moveTo(5,10);ctx.lineTo(14,28);
+    ctx.stroke();
+
+    ctx.fillStyle=p.team==="blue"?BLUE:RED;
+    ctx.beginPath();ctx.roundRect(-13,-13,27,35,8);ctx.fill();
+
+    ctx.strokeStyle=SKIN;ctx.lineWidth=6;
+    ctx.beginPath();
+    ctx.moveTo(-10,-6);ctx.lineTo(-23,2);
+    ctx.moveTo(11,-6);ctx.lineTo(24,-2);
+    ctx.stroke();
+
+    ctx.fillStyle=SKIN;
+    ctx.beginPath();ctx.arc(0,-26,13,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#111827";
+    ctx.beginPath();
+    ctx.arc(-4,-30,1.7,0,Math.PI*2);
+    ctx.arc(4,-30,1.7,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();return;
+  }
+
+  if(p.shoulder>0) {
+    ctx.rotate(-.08);
+  }
+
   if(p.slide>0) {
     ctx.rotate(-.15);
     ctx.fillStyle=p.team==="blue"?BLUE:RED;
@@ -1293,9 +1411,9 @@ shootBtn.addEventListener("pointerdown",e=>{
 
   // Lock an owned or nearby slow ball to the shot action so auto-control expiry
   // cannot turn a charged shot into a defensive slide.
-  input.shootBallLock = (ball.owner===c || nearbyLooseBallFor(c,86));
+  input.shootBallLock = (ball.owner===c || nearbyLooseBallFor(c,104));
 
-  if(!ball.owner && input.shootBallLock && nearbyLooseBallFor(c,86) && Math.hypot(ball.vx,ball.vy)<135){
+  if(!ball.owner && input.shootBallLock && nearbyLooseBallFor(c,96) && Math.hypot(ball.vx,ball.vy)<190){
     ball.owner=c;
     ball.passTarget=null;
     ball.vx=ball.vy=ball.vz=0;
@@ -1312,10 +1430,10 @@ function releaseShoot() {
   const held=(performance.now()-input.shootStarted)/1000;
   const c=controlled();
 
-  if(ball.owner===c || nearbyLooseBallFor(c,86) || input.shootBallLock) {
+  if(ball.owner===c || nearbyLooseBallFor(c,104) || input.shootBallLock) {
     playerShoot(c,held);
   } else {
-    offBallAction("blue","slide");
+    offBallAction("blue","shoulder");
   }
 
   input.shootBallLock=false;
