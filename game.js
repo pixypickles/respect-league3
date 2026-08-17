@@ -6,9 +6,6 @@ const ctx = canvas.getContext("2d");
 const scoreEl = document.getElementById("score");
 const clockEl = document.getElementById("clock");
 const msgEl = document.getElementById("message");
-const shotChargeMeterEl=document.getElementById("shotChargeMeter");
-const shotChargeFillEl=document.getElementById("shotChargeFill");
-const shotChargeTextEl=document.getElementById("shotChargeText");
 
 const W = 1280, H = 720;
 const COURT = { x: 205, y: 62, w: 870, h: 596 };
@@ -229,26 +226,24 @@ function safeCpuPassTarget(p){
 }
 
 function bestPassTarget(p, inputDir=null) {
-  const mates=teamPlayers(p.team).filter(q=>q!==p && q.role!=="gk");
+  const mates = teamPlayers(p.team).filter(q=>q!==p && q.role!=="gk");
   if(!mates.length) return null;
-
-  if(inputDir && Math.hypot(inputDir.x,inputDir.y)>.16){
-    const idir=norm(inputDir.x,inputDir.y);
-    let best=null, bestScore=-Infinity;
-
-    for(const q of mates){
-      const vx=q.x-p.x, vy=q.y-p.y;
-      const d=Math.hypot(vx,vy)||1;
-      const qdir={x:vx/d,y:vy/d};
-      const align=qdir.x*idir.x+qdir.y*idir.y;
-      let score=align*6.0-d/650;
-      if(align>.70) score+=2.0;
-      if(score>bestScore){bestScore=score;best=q;}
+  if(inputDir && Math.hypot(inputDir.x,inputDir.y)>.2) {
+    let best=null, bs=-999;
+    for(const q of mates) {
+      const d=norm(q.x-p.x,q.y-p.y);
+      const align=d.x*inputDir.x+d.y*inputDir.y;
+      const score=align*2-dist(p,q)/700;
+      if(score>bs){bs=score;best=q;}
     }
     return best;
   }
-
-  return mates.slice().sort((a,b)=>dist(p,a)-dist(p,b))[0];
+  let best=null, bs=Infinity;
+  for(const q of mates){
+    const d=dist(p,q);
+    if(d<bs){bs=d;best=q;}
+  }
+  return best;
 }
 
 
@@ -771,14 +766,12 @@ function updateControlled(p,dt) {
     // Core mechanic: holding trap is required to keep dribbling.
     if(input.trap || p.autoControlTimer>0 || (input.shootDown && input.shootBallLock)) {
       const n=norm(p.dirX,p.dirY);
-      ball.x=p.x+n.x*20;
-      ball.y=p.y+18+n.y*10;
-      ball.z=0;
+      ball.x=p.x+n.x*31; ball.y=p.y+n.y*31; ball.z=0;
       ball.vx=p.vx; ball.vy=p.vy;
     } else if(p.possessionTime>.10) {
       const n=norm(p.dirX,p.dirY);
       ball.owner=null;
-      ball.x=p.x+n.x*22; ball.y=p.y+18+n.y*10;
+      ball.x=p.x+n.x*30; ball.y=p.y+n.y*30;
       ball.vx=p.vx*.78+n.x*70; ball.vy=p.vy*.78+n.y*70; ball.vz=10;
       showMessage("BALL LOOSE",.28);
     }
@@ -980,11 +973,7 @@ function aiWithBall(p,dt) {
   const carrySpeed = p.team==="red" ? .58 : .72;
   p.vx=lerp(p.vx,n.x*p.speed*carrySpeed,dt*4);
   p.vy=lerp(p.vy,n.y*p.speed*carrySpeed,dt*4);
-  ball.x=p.x+n.x*20;
-  ball.y=p.y+18+n.y*10;
-  ball.z=0;
-  ball.vx=p.vx;
-  ball.vy=p.vy;
+  ball.x=p.x+n.x*31;ball.y=p.y+n.y*31;ball.z=0;ball.vx=p.vx;ball.vy=p.vy;
 }
 
 function updateAI(p,dt) {
@@ -1236,16 +1225,6 @@ function goal(who) {
 }
 
 function update(dt) {
-  if(input.shootDown){
-    const held=(performance.now()-input.shootStarted)/1000;
-    const ratio=clamp(held/.70,0,1);
-    shotChargeMeterEl.classList.add("show");
-    shotChargeFillEl.style.width=(ratio*100)+"%";
-    shotChargeTextEl.textContent=held<.095?"LOOP":(held<=.34?"SHOT":"POWER");
-  } else {
-    shotChargeMeterEl.classList.remove("show");
-  }
-
   if(messageTimer>0){messageTimer-=dt;if(messageTimer<=0)msgEl.style.opacity="0";}
   if(goalPause>0) {
     goalPause-=dt;
@@ -1355,14 +1334,17 @@ function drawPlayer(p) {
   ctx.strokeStyle=SKIN;ctx.lineWidth=6;
   ctx.beginPath();ctx.moveTo(-10,-7);ctx.lineTo(-19,8+swing*.35);ctx.moveTo(11,-7);ctx.lineTo(20,7-swing*.35);ctx.stroke();
 
-  // Head stays fixed; only the eyes scan left/right.
-  const eyeShift=p.controlled?0:p.headLook*3;
+  // Head stays upright, but CPU can glance left/right while scanning.
+  const headShift = p.controlled ? 0 : p.headLook*4.5;
   ctx.fillStyle=SKIN;
-  ctx.beginPath();ctx.arc(0,-26,13,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();
+  ctx.arc(headShift,-26,13,0,Math.PI*2);
+  ctx.fill();
+
   ctx.fillStyle="#111827";
   ctx.beginPath();
-  ctx.arc(-4+eyeShift,-30,1.7,0,Math.PI*2);
-  ctx.arc(4+eyeShift,-30,1.7,0,Math.PI*2);
+  ctx.arc(headShift-4,-30,1.7,0,Math.PI*2);
+  ctx.arc(headShift+4,-30,1.7,0,Math.PI*2);
   ctx.fill();
 
   if(p.controlled) {

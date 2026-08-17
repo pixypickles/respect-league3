@@ -165,49 +165,41 @@ body {
   white-space: nowrap;
 }
 
+
+/* v18: version display */
 #versionTag {
   font-size: .65em;
-  opacity: .8;
+  opacity: .82;
   background: rgba(0,0,0,.28);
   padding: 3px 7px;
   border-radius: 7px;
 }
 
-#shotChargeMeter {
-  position:absolute;
-  right:max(12px, env(safe-area-inset-right));
-  top:8%;
-  width:min(160px,20vw);
-  height:20px;
-  border:2px solid rgba(255,255,255,.55);
-  border-radius:10px;
-  background:rgba(0,0,0,.3);
-  opacity:0;
-  pointer-events:none;
-  z-index:8;
-  overflow:hidden;
-}
-#shotChargeMeter.show { opacity:1; }
-#shotChargeFill {
-  position:absolute;
-  left:0; top:0; bottom:0;
-  width:0;
-  background:rgba(255,255,255,.5);
-}
-#shotChargeText {
-  position:absolute;
-  inset:0;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  color:#fff;
-  font-weight:900;
-  font-size:11px;
-  text-shadow:0 1px 3px #000;
+/* v18: separate SHOT and DASH without touching game logic */
+#buttons .trap {
+  right: 2%;
+  left: auto;
+  top: 0%;
+  bottom: auto;
 }
 
-/* v17 button spacing */
-#buttons .trap  { right:2%; left:auto; top:0%; bottom:auto; }
-#buttons .pass  { left:0%; right:auto; top:34%; bottom:auto; }
-#buttons .shoot { right:0%; left:auto; top:43%; bottom:auto; }
-#buttons .dash  { right:0%; left:auto; top:auto; bottom:-2%; }
+#buttons .pass {
+  left: 0%;
+  right: auto;
+  top: 34%;
+  bottom: auto;
+}
+
+#buttons .shoot {
+  right: 0%;
+  left: auto;
+  top: 42%;
+  bottom: auto;
+}
+
+#buttons .dash {
+  right: 0%;
+  left: auto;
+  top: auto;
+  bottom: -5%;
+}
