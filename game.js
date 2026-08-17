@@ -208,7 +208,7 @@ function safeCpuPassTarget(p){
       return {q,d,nearestEnemy,blocked,score};
     })
     // No tiny passes in a crowd.
-    .filter(c=>c.d>135 && !c.blocked && c.nearestEnemy>62)
+    .filter(c=>c.d>(p.team==="red"?175:135) && !c.blocked && c.nearestEnemy>62)
     .sort((a,b)=>b.score-a.score);
 
   return candidates.length ? candidates[0].q : null;
@@ -236,63 +236,102 @@ function bestPassTarget(p, inputDir=null) {
 }
 
 
-function nearbyLooseBallFor(p, radius=58) {
-  return !ball.owner && ball.z<28 && dist(p,ball)<=radius;
+function nearbyLooseBallFor(p, radius=76) {
+  return !ball.owner && ball.z<34 && dist(p,ball)<=radius;
+}
+
+function looseBallPassTarget(p) {
+  const stickMag = p.controlled ? Math.hypot(input.sx,input.sy) : 0;
+  let target = null;
+
+  if(p.controlled && stickMag>.18) {
+    target = bestPassTarget(p,{x:input.sx,y:input.sy});
+  } else if(!p.controlled) {
+    target = safeCpuPassTarget(p);
+  } else {
+    target = bestPassTarget(p);
+  }
+
+  // Don't blindly clear forward when there is no teammate to receive.
+  if(!target) return null;
+
+  // For direct loose-ball passes, reject absurdly distant or tightly marked targets.
+  const d=dist(p,target);
+  if(d>520) return null;
+
+  const enemyNear=Math.min(...opponents(p.team)
+    .filter(e=>e.role!=="gk")
+    .map(e=>dist(target,e)));
+  if(enemyNear<45) return null;
+
+  return target;
 }
 
 function kickNearbyLooseBall(p, kind="pass") {
-  if(!nearbyLooseBallFor(p,64)) return false;
+  if(!nearbyLooseBallFor(p,82)) return false;
 
   const stickMag = p.controlled ? Math.hypot(input.sx,input.sy) : 0;
   let dx = stickMag>.18 ? input.sx : p.dirX;
   let dy = stickMag>.18 ? input.sy : p.dirY;
   if(Math.hypot(dx,dy)<.1){ dx=p.team==="blue"?1:-1; dy=0; }
 
-  // Make contact from the actual ball position rather than requiring ownership/trap.
   p.x = clamp(p.x,COURT.x+25,COURT.x+COURT.w-25);
   p.y = clamp(p.y,COURT.y+25,COURT.y+COURT.h-25);
 
-  ball.lastTouch=p;
-  ball.passFrom=p;
-  ball.passTarget=null;
-  ball.owner=null;
-  ball.touchGrace=.12;
-  ball.protectedTeam=p.team;
-  p.kickAnim=.18;
-  p.cooldown=.16;
-
   if(kind==="pass") {
-    let target = p.controlled ? bestPassTarget(p, stickMag>.18?{x:input.sx,y:input.sy}:null) : safeCpuPassTarget(p);
-    if(target) {
-      target.receiveIntent=true;
-      const tx=target.x+target.dirX*45;
-      const ty=target.y+target.dirY*45;
-      const n=norm(tx-ball.x,ty-ball.y);
-      ball.vx=n.x*430;
-      ball.vy=n.y*430;
-      ball.vz=26;
-      ball.passTarget=target;
-    } else {
-      const n=norm(dx,dy);
-      ball.vx=n.x*390; ball.vy=n.y*390; ball.vz=22;
+    const target = looseBallPassTarget(p);
+
+    // PASS is a pass, not a generic clearance. If nobody is available, do nothing.
+    if(!target) {
+      if(p.controlled) showMessage("NO PASS",.28);
+      return false;
     }
+
+    target.receiveIntent=true;
+    const tx=target.x+target.dirX*42;
+    const ty=target.y+target.dirY*42;
+    const n=norm(tx-ball.x,ty-ball.y);
+
+    ball.lastTouch=p;
+    ball.passFrom=p;
+    ball.passTarget=target;
+    ball.owner=null;
+    ball.touchGrace=.12;
+    ball.protectedTeam=p.team;
+    ball.vx=n.x*420;
+    ball.vy=n.y*420;
+    ball.vz=24;
     ball.shot=false;
-    ball.power=430;
+    ball.power=420;
+
+    p.kickAnim=.18;
+    p.cooldown=.16;
     return true;
   }
 
   if(kind==="shot") {
     const n=norm(dx,dy);
+
+    ball.lastTouch=p;
+    ball.passFrom=p;
+    ball.passTarget=null;
+    ball.owner=null;
+    ball.touchGrace=.12;
+    ball.protectedTeam=p.team;
     ball.vx=n.x*520;
     ball.vy=n.y*520;
     ball.vz=28;
     ball.shot=true;
     ball.power=520;
+
+    p.kickAnim=.18;
+    p.cooldown=.16;
     return true;
   }
 
   return false;
 }
+
 
 function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
   const n=norm(dx,dy);
@@ -355,7 +394,7 @@ function doPass(p, forcedTarget=null) {
 function playerShoot(p, chargeSec) {
   // Direct shot from a nearby loose ball is allowed without trapping first.
   if(ball.owner!==p) {
-    if(nearbyLooseBallFor(p,64)) {
+    if(nearbyLooseBallFor(p,82)) {
       const stickMag=Math.hypot(input.sx,input.sy);
       let dx=stickMag>.18?input.sx:p.dirX;
       let dy=stickMag>.18?input.sy:p.dirY;
@@ -463,8 +502,8 @@ function attemptTrap(p, dt) {
       ball.protectedTeam=p.team;
       p.possessionTime=0;
       p.receiveIntent=false;
-      p.receiveLock=.22;
-      p.aiTimer=.22;
+      p.receiveLock = p.team==="red" ? .48 : .22;
+      p.aiTimer = p.team==="red" ? .50 : .22;
       return true;
     }
   }
@@ -687,9 +726,13 @@ function aiWithBall(p,dt) {
   // Otherwise shield/step away briefly instead of machine-gunning tiny passes.
   if(near.d<92 && p.cooldown<=.08 && p.receiveLock<=0) {
     const target=safeCpuPassTarget(p);
-    if(target) {
+
+    // Enemy CPU deliberately takes an extra touch before releasing under pressure.
+    const canRelease = p.team==="red" ? p.possessionTime>.42 : p.possessionTime>.18;
+
+    if(target && canRelease) {
       doPass(p,target);
-      p.receiveLock=.16;
+      p.receiveLock = p.team==="red" ? .34 : .16;
       return;
     }
   }
@@ -699,7 +742,7 @@ function aiWithBall(p,dt) {
 
   // CPU prefers passing. Dribble only when clearly unpressured.
   if(p.aiTimer<=0 && p.receiveLock<=0) {
-    p.aiTimer=rand(.24,.38);
+    p.aiTimer = p.team==="red" ? rand(.48,.72) : rand(.28,.42);
 
     if(goalDist<260 && Math.abs(p.y-goalY)<180 && near.d>90) {
       const aimY=goalY+rand(-75,75);
@@ -708,7 +751,9 @@ function aiWithBall(p,dt) {
     }
 
     let target=safeCpuPassTarget(p);
-    if(target && (near.d<190 || Math.random()<.74)) {
+    const passChance = p.team==="red" ? .52 : .72;
+    const pressureRange = p.team==="red" ? 145 : 190;
+    if(target && (near.d<pressureRange || Math.random()<passChance)) {
       doPass(p,target);
       return;
     }
@@ -735,7 +780,7 @@ function updateAI(p,dt) {
   if(p.controlled){updateControlled(p,dt);return;}
   if(p.slide>0)return;
 
-  if(!ball.owner && nearbyLooseBallFor(p,58)) {
+  if(!ball.owner && nearbyLooseBallFor(p,74)) {
     const squad=teamPlayers(p.team).filter(q=>q.role!=="gk" && !q.controlled);
     const nearest=squad.slice().sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
     if(nearest===p && ball.touchGrace<=0) {
@@ -1148,9 +1193,10 @@ passBtn.addEventListener("pointerdown",e=>{
   }
 
   // Directly kick a nearby loose ball without needing TRAP first.
-  if(nearbyLooseBallFor(c,64)) {
-    kickNearbyLooseBall(c,"pass");
-    showMessage("DIRECT PASS",.28);
+  if(nearbyLooseBallFor(c,82)) {
+    if(kickNearbyLooseBall(c,"pass")) {
+      showMessage("DIRECT PASS",.28);
+    }
     return;
   }
 
@@ -1182,7 +1228,7 @@ function releaseShoot() {
   input.shootDown=false;shootBtn.classList.remove("active");
   const held=(performance.now()-input.shootStarted)/1000;
   const c=controlled();
-  if(ball.owner===c || nearbyLooseBallFor(c,64)) playerShoot(c,held);
+  if(ball.owner===c || nearbyLooseBallFor(c,82)) playerShoot(c,held);
   else offBallAction("blue","slide");
 }
 shootBtn.addEventListener("pointerup",releaseShoot);
