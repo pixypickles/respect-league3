@@ -1,0 +1,10 @@
+{
+  "name": "Futsal Trap Game",
+  "short_name": "Futsal",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#111827",
+  "theme_color": "#111827",
+  "description": "Landscape smartphone futsal prototype focused on trapping, passing and timing."
+}
