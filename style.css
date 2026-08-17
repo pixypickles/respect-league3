@@ -489,11 +489,3 @@ body.practice-open #clock {
 #stickKnob {
   touch-action: none !important;
 }
-
-
-/* v38: lift the court slightly so the bottom touchline stays visible on mobile landscape */
-@media (orientation: landscape) and (max-height: 600px) {
-  #game {
-    transform: translateY(-10px);
-  }
-}
