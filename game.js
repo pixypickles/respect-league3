@@ -427,21 +427,48 @@ function doPass(p, forcedTarget=null) {
   }
 }
 function playerShoot(p, chargeSec) {
-  // v19: SHOT is intentionally simple — always a strong shot.
-  // No loop shot / normal shot / charge tiers.
-  if(ball.owner!==p) return;
+  // v20: every SHOT is a strong shot aimed at the opponent goal.
+  // Stick vertical input chooses top / center / bottom of the goal.
+  const canShootOwned = ball.owner===p;
+  const canShootLoose = !ball.owner && ball.z<42 && dist(p,ball)<128;
+  if(!canShootOwned && !canShootLoose) return;
 
-  const stickMag=Math.hypot(input.sx,input.sy);
-  let dx = stickMag>.18?input.sx:p.dirX;
-  let dy = stickMag>.18?input.sy:p.dirY;
-  if(Math.hypot(dx,dy)<.1){
-    dx=p.team==="blue"?1:-1;
-    dy=0;
+  const goalX = p.team==="blue" ? COURT.x+COURT.w+12 : COURT.x-12;
+  const goalTop = H/2-GOAL_H/2;
+  const goalBottom = H/2+GOAL_H/2;
+
+  let targetY=H/2;
+  if(input.sy < -.50) {
+    targetY=goalTop+14;
+  } else if(input.sy > .50) {
+    targetY=goalBottom-14;
   }
 
+  const fromX = canShootOwned ? p.x : ball.x;
+  const fromY = canShootOwned ? p.y+16 : ball.y;
   const speed=650;
-  const lift=34;
-  kickBall(p,dx,dy,speed,lift,true,null);
+  const lift=30;
+
+  if(canShootOwned) {
+    kickBall(p,goalX-fromX,targetY-fromY,speed,lift,true,null);
+  } else {
+    const n=norm(goalX-ball.x,targetY-ball.y);
+    ball.owner=null;
+    ball.passTarget=null;
+    ball.lastTouch=p;
+    ball.passFrom=p;
+    ball.touchGrace=.12;
+    ball.protectedTeam=p.team;
+    ball.vx=n.x*speed;
+    ball.vy=n.y*speed;
+    ball.vz=lift;
+    ball.shot=true;
+    ball.power=speed;
+    p.kickAnim=.22;
+    p.cooldown=.18;
+  }
+
+  input.postKickNoAutoTrap=.50;
   showMessage("POWER SHOT",.35);
 }
 
@@ -1013,33 +1040,53 @@ function updateGK(p,dt) {
   const gx=ownLeft?COURT.x+30:COURT.x+COURT.w-30;
   const gy=clamp(ball.y,H/2-GOAL_H/2+25,H/2+GOAL_H/2-25);
   const targetY=ball.owner && ball.owner.team===p.team ? H/2 : gy;
+
   p.x=lerp(p.x,gx,dt*6);
   p.y=lerp(p.y,targetY,dt*3.5);
 
-  const danger = !ball.owner && ball.shot && ball.z<60 && dist(p,ball)<58;
+  const danger = !ball.owner && ball.shot && ball.z<60 && dist(p,ball)<62;
   if(danger) {
-    const centerFactor=1-clamp(Math.abs(ball.y-H/2)/(GOAL_H*.5),0,1);
-    const strong=ball.power>590;
-    let saveChance=strong ? (.18+.42*centerFactor) : (.68+.27*centerFactor);
-
-    // Player-controlled blue keeper can catch any shot with perfectly timed trap.
-    if(p.team==="blue" && input.trap && dist(p,ball)<52) {
-      ball.owner=p;ball.vx=ball.vy=ball.vz=0;ball.z=0;ball.shot=false;
+    // Timed TRAP remains the strongest keeper action.
+    if(p.team==="blue" && input.trap && dist(p,ball)<54) {
+      ball.owner=p;
+      ball.vx=ball.vy=ball.vz=0;
+      ball.z=0;
+      ball.shot=false;
       showMessage("GK SUPER CATCH!",.7);
       return;
     }
 
+    const straightAtKeeper = Math.abs(ball.y-p.y) < 30;
+
+    // A shot coming directly at the keeper is always stopped,
+    // even if the keeper is standing still. It is parried, not caught.
+    if(straightAtKeeper) {
+      const awayX=ownLeft?1:-1;
+      const side = Math.sign(ball.y-H/2) || (Math.random()<.5?-1:1);
+      ball.owner=null;
+      ball.vx=awayX*310;
+      ball.vy=side*rand(110,210);
+      ball.vz=75;
+      ball.shot=false;
+      ball.lastTouch=p;
+      return;
+    }
+
+    // Shots toward the edges remain difficult for the keeper.
+    const centerFactor=1-clamp(Math.abs(ball.y-H/2)/(GOAL_H*.5),0,1);
+    const strong=ball.power>590;
+    const saveChance=strong ? (.10+.28*centerFactor) : (.58+.28*centerFactor);
+
     if(Math.random()<saveChance) {
-      if(!strong && Math.random()<.68) {
-        // normal shots often parried
-        const n=norm(ball.x-p.x,ball.y-p.y);
-        ball.vx=(ownLeft?1:-1)*280;
-        ball.vy=n.y*300+rand(-80,80);
-        ball.vz=80;
-        ball.shot=false;
-      } else {
-        ball.owner=p;ball.vx=ball.vy=ball.vz=0;ball.z=0;ball.shot=false;
-      }
+      // Normal automatic saves are mainly parries.
+      const awayX=ownLeft?1:-1;
+      const side=Math.sign(ball.y-p.y) || (Math.random()<.5?-1:1);
+      ball.owner=null;
+      ball.vx=awayX*285;
+      ball.vy=side*rand(120,260);
+      ball.vz=72;
+      ball.shot=false;
+      ball.lastTouch=p;
     }
   }
 
