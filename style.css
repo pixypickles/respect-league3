@@ -166,67 +166,58 @@ body {
 }
 
 
-/* v14: charge feedback */
-#shootBtn {
-  overflow: visible;
-}
-#shootBtn.active {
-  filter: brightness(1.08);
-}
-
-
-/* v15: right-side controls — keep SHOT and DASH clearly separated */
-#shootBtn {
-  right: 1.8vw !important;
-  bottom: 25.5vh !important;
-}
-#dashBtn {
-  right: 1.8vw !important;
-  bottom: 3.0vh !important;
-}
-#passBtn {
-  right: 9.2vw !important;
-  bottom: 22.5vh !important;
-}
-#trapBtn {
-  right: 1.8vw !important;
-  bottom: 47.5vh !important;
+#versionTag {
+  font-size: .65em;
+  opacity: .78;
+  background: rgba(0,0,0,.28);
+  padding: 3px 7px;
+  border-radius: 7px;
 }
 
-/* DOM-based shot charge ring: avoids canvas/layout work that could freeze startup. */
-#shotChargeRing {
-  --charge: 0;
+#shotChargeMeter {
   position: absolute;
-  inset: -10px;
-  border-radius: 50%;
-  pointer-events: none;
+  right: max(18px, env(safe-area-inset-right));
+  top: 7%;
+  width: min(180px, 22vw);
+  height: 22px;
+  border: 2px solid rgba(255,255,255,.55);
+  border-radius: 11px;
+  background: rgba(0,0,0,.28);
   opacity: 0;
-  transition: opacity .06s linear;
-  background:
-    conic-gradient(
-      rgba(255,255,255,.96) calc(var(--charge) * 1turn),
-      rgba(255,255,255,.18) 0
-    );
-  -webkit-mask:
-    radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
-  mask:
-    radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 8;
 }
-#shotChargeRing.show { opacity: 1; }
-#shotChargeLabel {
+#shotChargeMeter.show { opacity: 1; }
+
+#shotChargeFill {
   position: absolute;
-  left: 50%;
-  top: -17px;
-  transform: translateX(-50%);
-  font: 900 12px/1 system-ui, sans-serif;
-  color: white;
-  text-shadow: 0 2px 3px rgba(0,0,0,.65);
-  white-space: nowrap;
+  inset: 0 auto 0 0;
+  width: 0%;
+  background: rgba(255,255,255,.48);
 }
 
-/* Keep controls usable on shorter landscape phones. */
+#shotChargeText {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 900;
+  font-size: clamp(10px, 1.4vw, 14px);
+  text-shadow: 0 1px 3px rgba(0,0,0,.7);
+}
+
+/* v16: keep right-side buttons clearly separated within the side gutter */
+#buttons .trap  { right: 2%; left: auto; top: 0%; bottom: auto; }
+#buttons .pass  { left: 0%; right: auto; top: 37%; bottom: auto; }
+#buttons .shoot { right: 0%; left: auto; top: 45%; bottom: auto; }
+#buttons .dash  { right: 0%; left: auto; top: auto; bottom: 0%; }
+
 @media (max-height: 500px) {
-  #trapBtn { bottom: 49vh !important; }
-  #shootBtn { bottom: 26vh !important; }
-  #dashBtn { bottom: 2vh !important; }
+  #buttons .trap  { top: 0%; }
+  #buttons .pass  { top: 36%; }
+  #buttons .shoot { top: 46%; }
+  #buttons .dash  { bottom: 0%; }
 }
