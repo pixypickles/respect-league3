@@ -714,6 +714,7 @@ function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
 
   p.kickAnim=.22;
   p.cooldown=.18;
+  if(!isShot) sfx("pass");
 }
 
 function doPass(p, forcedTarget=null) {
@@ -806,6 +807,7 @@ function playerShoot(p, chargeSec, superShot=false) {
   }
 
   input.postKickNoAutoTrap=.50;
+  sfx(superShot?"super":"shot");
   showMessage(superShot ? "SUPER SHOT!" : "POWER SHOT", superShot ? .48 : .35);
   return true;
 }
@@ -855,7 +857,7 @@ function attemptTrap(p, dt) {
       ball.touchGrace=.18;
       ball.protectedTeam=p.team;
       p.possessionTime=0;
-      p.kickAnim=.16;
+      p.kickAnim = input.trap ? .16 : .02;
 
       if(slowLoose && !input.trap){
         // Brief settle only. The player can immediately PASS or SHOT.
@@ -1036,6 +1038,7 @@ function shoulderCharge(actor) {
   }
 
   if(gamePhase==="practice") tutorialFlags.defenseUsed=true;
+  sfx("poke");
   showMessage("SHOULDER!",.32);
   return true;
 }
@@ -1488,6 +1491,8 @@ function updatePhysics(dt) {
     p.shoulder=Math.max(0,p.shoulder-dt);
     p.stagger=Math.max(0,p.stagger-dt);
     p.kickAnim=Math.max(0,p.kickAnim-dt);
+    // Auto-trap uses a tiny value; clear it quickly so one foot does not flap repeatedly.
+    if(p.kickAnim>0 && p.kickAnim<.04) p.kickAnim=Math.max(0,p.kickAnim-dt*5);
     p.slide=Math.max(0,p.slide-dt);
 
     if(p.slide<=0) {
@@ -1608,6 +1613,7 @@ function handleWallsAndGoals() {
 
 function goal(who) {
   goalPause=1.1;
+  sfx("goal");
   showMessage(`${who==="BLUE"?teamDef(selectedTeamId).name:teamDef(opponentTeamId).name} GOAL!`,1);
   updateScoreLabel();
   ball.owner=null;ball.vx=ball.vy=ball.vz=0;ball.shot=false;
@@ -1896,6 +1902,7 @@ function manualTrapCutProtectedBall(p){
   ball.protectedTeam=p.team;
   p.possessionTime=0;
   p.kickAnim=.14;
+  sfx("poke");
   showMessage("TRAP CUT!",.34);
   return true;
 }
@@ -1946,9 +1953,51 @@ function dashTouchSkill(p) {
   p.cooldown=.10;
 
   if(gamePhase==="practice") tutorialFlags.dashSkillUsed=true;
+  sfx("dash");
   showMessage("PUSH & DASH",.34);
   return true;
 }
+
+
+// ---------- Sound effects ----------
+let audioCtx=null;
+function ensureAudio(){
+  if(!audioCtx){
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(AC) audioCtx=new AC();
+  }
+  if(audioCtx && audioCtx.state==="suspended") audioCtx.resume();
+}
+function tone(freq=220,dur=.05,type="sine",vol=.06,endFreq=null){
+  ensureAudio();
+  if(!audioCtx) return;
+  const now=audioCtx.currentTime;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type=type;o.frequency.setValueAtTime(freq,now);
+  if(endFreq) o.frequency.exponentialRampToValueAtTime(Math.max(20,endFreq),now+dur);
+  g.gain.setValueAtTime(vol,now);
+  g.gain.exponentialRampToValueAtTime(.001,now+dur);
+  o.connect(g);g.connect(audioCtx.destination);o.start(now);o.stop(now+dur);
+}
+function noise(dur=.04,vol=.035){
+  ensureAudio(); if(!audioCtx)return;
+  const n=Math.max(1,Math.floor(audioCtx.sampleRate*dur));
+  const b=audioCtx.createBuffer(1,n,audioCtx.sampleRate),d=b.getChannelData(0);
+  for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
+  const s=audioCtx.createBufferSource(),g=audioCtx.createGain();
+  s.buffer=b;g.gain.value=vol;s.connect(g);g.connect(audioCtx.destination);s.start();
+}
+function sfx(name){
+  if(name==="pass"){tone(150,.045,"triangle",.055,105);noise(.025,.018);}
+  else if(name==="shot"){tone(105,.075,"square",.065,58);noise(.045,.035);}
+  else if(name==="super"){tone(92,.11,"sawtooth",.075,42);noise(.065,.05);}
+  else if(name==="trap"){tone(210,.028,"triangle",.025,170);}
+  else if(name==="dash"){tone(330,.055,"sine",.035,150);}
+  else if(name==="poke"){noise(.045,.045);tone(125,.035,"triangle",.035,90);}
+  else if(name==="goal"){tone(440,.10,"square",.04,660);setTimeout(()=>tone(660,.16,"square",.04,880),90);}
+  else if(name==="save"){noise(.055,.04);tone(180,.05,"triangle",.04,120);}
+}
+document.addEventListener("pointerdown",ensureAudio,{once:true});
 
 // ---------- Buttons ----------
 const passBtn=document.getElementById("passBtn");
