@@ -108,7 +108,9 @@ const ball = {
   passFrom:null,
   returnRequested:false,
   shot:false,
-  power:0
+  power:0,
+  touchGrace:0,
+  protectedTeam:null
 };
 
 function resetKickoff(team="blue") {
@@ -133,6 +135,7 @@ function resetKickoff(team="blue") {
   ball.x=starter.x+(team==="blue"?30:-30);
   ball.y=starter.y;
   ball.z=0; ball.vx=ball.vy=ball.vz=0; ball.shot=false; ball.passTarget=null;
+  ball.touchGrace=.18; ball.protectedTeam=starter.team;
   starter.possessionTime=0;
 }
 
@@ -202,6 +205,8 @@ function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
   ball.passTarget=target;
   ball.shot=shot;
   ball.power=speed;
+  ball.touchGrace=.12;
+  ball.protectedTeam=p.team;
   p.kickAnim=.22;
   p.cooldown=.18;
 }
@@ -253,29 +258,59 @@ function trapWindowFor(p) {
 
 function attemptTrap(p, dt) {
   if(!trapWindowFor(p)) return false;
+
+  // Immediately after a touch, the opposing CPU cannot instantly poke/trap it back.
+  if(ball.touchGrace>0 && ball.protectedTeam && p.team!==ball.protectedTeam) {
+    return false;
+  }
+
   const speed=Math.hypot(ball.vx,ball.vy);
   const closing = speed>100;
-  // trap timing is considered good if trap is held when ball enters contact radius.
+
   if(input.trap && p.controlled) {
     ball.owner=p;
     ball.vx=ball.vy=ball.vz=0;
     ball.z=0;
     ball.lastTouch=p;
+    ball.touchGrace=.18;
+    ball.protectedTeam=p.team;
     p.possessionTime=0;
     p.kickAnim=.16;
     showMessage(speed>500?"SUPER TRAP!":"TRAP!",.38);
     return true;
   }
-  if(!p.controlled || p.team==="red") {
-    // CPU auto control is reliable but not perfect.
-    const success = Math.random() < (speed>550?.72:.94);
+
+  if(!p.controlled) {
+    // Only one CPU from each team is allowed to contest a loose ball.
+    const squad=teamPlayers(p.team).filter(q=>q.role!=="gk" && !q.controlled);
+    const nearest=squad.slice().sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
+
+    // Intended receiver always has priority. Otherwise only nearest CPU may take it.
+    const allowed = (ball.passTarget===p) || (nearest===p);
+    if(!allowed) return false;
+
+    // If an opponent is simultaneously very close, don't let both auto-trap every frame.
+    const oppNear = opponents(p.team)
+      .filter(q=>q.role!=="gk")
+      .some(q=>dist(q,ball)<42);
+
+    let success = Math.random() < (speed>550?.72:.94);
+    if(oppNear && ball.passTarget!==p) success = Math.random()<.58;
+
     if(success) {
-      ball.owner=p; ball.vx=ball.vy=ball.vz=0; ball.z=0; ball.lastTouch=p; p.possessionTime=0;
+      ball.owner=p;
+      ball.vx=ball.vy=ball.vz=0;
+      ball.z=0;
+      ball.lastTouch=p;
+      ball.touchGrace=.20;
+      ball.protectedTeam=p.team;
+      p.possessionTime=0;
+      p.receiveIntent=false;
       return true;
     }
   }
+
   if(closing && p.controlled && !input.trap) {
-    // bad touch / bounce
     const n=norm(ball.vx,ball.vy);
     ball.vx=n.x*speed*.42 + rand(-55,55);
     ball.vy=n.y*speed*.42 + rand(-55,55);
@@ -284,7 +319,6 @@ function attemptTrap(p, dt) {
   }
   return false;
 }
-
 function defensivePoke(actor) {
   if(ball.owner && ball.owner.team!==actor.team && dist(actor,ball.owner)<58) {
     const e=ball.owner;
@@ -293,6 +327,8 @@ function defensivePoke(actor) {
     ball.x=e.x-n.x*18; ball.y=e.y-n.y*18;
     ball.vx=n.x*180+actor.dirX*120; ball.vy=n.y*180+actor.dirY*120; ball.vz=25;
     ball.lastTouch=actor;
+    ball.touchGrace=.20;
+    ball.protectedTeam=actor.team;
     actor.kickAnim=.18;
     return true;
   }
@@ -321,6 +357,8 @@ function checkSlideSteal(p) {
     ball.x=victim.x+n.x*22; ball.y=victim.y+n.y*22;
     ball.vx=n.x*250+p.dirX*100; ball.vy=n.y*250+p.dirY*100; ball.vz=45;
     ball.lastTouch=p;
+    ball.touchGrace=.20;
+    ball.protectedTeam=p.team;
   } else if(!ball.owner && dist(p,ball)<45 && ball.z<24) {
     ball.vx=p.dirX*300; ball.vy=p.dirY*300; ball.vz=35; ball.lastTouch=p;
   }
@@ -417,10 +455,21 @@ function aiMoveOffBall(p,dt) {
       ty=lerp(laneY,e.y,.12);
     }
   } else {
-    // Only the nearest player attacks a loose ball; others keep their spacing.
+    // Only one player per team attacks a loose ball. Others stay in support lanes.
     const nearest=squad.slice().sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
-    if(nearest===p){tx=ball.x;ty=ball.y;}
-    else {
+    if(nearest===p){
+      const enemyNearest=opponents(p.team)
+        .filter(q=>q.role!=="gk")
+        .sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
+
+      // Approach from own side instead of standing directly on top of the opponent.
+      const ownSide=p.team==="blue"?-1:1;
+      tx=ball.x + ownSide*18;
+      ty=ball.y;
+      if(enemyNearest && dist(enemyNearest,ball)<45){
+        ty += Math.sign(p.y-enemyNearest.y || (idx%2?1:-1))*22;
+      }
+    } else {
       tx=p.team==="blue"?430:850;
       ty=[190,360,530,285][idx%4];
     }
@@ -489,12 +538,12 @@ function updateAI(p,dt) {
   else aiMoveOffBall(p,dt);
 
   // Only the closest defender actively challenges, preventing CPU pile-ups.
-  if(ball.owner && ball.owner.team!==p.team && p.cooldown<=0) {
+  if(ball.owner && ball.owner.team!==p.team && p.cooldown<=0 && ball.touchGrace<=0) {
     const e=ball.owner;
     const nearest=teamPlayers(p.team).filter(q=>q.role!=="gk").sort((a,b)=>dist(a,e)-dist(b,e))[0];
-    if(nearest===p && dist(p,e)<52) {
-      if(Math.random()<dt*2.0) defensivePoke(p);
-      else if(Math.random()<dt*.35) slide(p);
+    if(nearest===p && dist(p,e)<50) {
+      if(Math.random()<dt*1.25) defensivePoke(p);
+      else if(Math.random()<dt*.22) slide(p);
     }
   }
 }
@@ -545,6 +594,9 @@ function updateGK(p,dt) {
 }
 
 function updatePhysics(dt) {
+  ball.touchGrace=Math.max(0,ball.touchGrace-dt);
+  if(ball.touchGrace<=0) ball.protectedTeam=null;
+
   for(const p of [...teams.blue,...teams.red]) {
     p.cooldown=Math.max(0,p.cooldown-dt);
     p.kickAnim=Math.max(0,p.kickAnim-dt);
@@ -570,7 +622,7 @@ function updatePhysics(dt) {
   for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
     const a=all[i],b=all[j], d=dist(a,b);
     if(d<PLAYER_R*1.75 && d>0){
-      const n=norm(a.x-b.x,a.y-b.y), push=(PLAYER_R*1.75-d)*.28;
+      const n=norm(a.x-b.x,a.y-b.y), push=(PLAYER_R*1.85-d)*.34;
       a.x+=n.x*push;b.x-=n.x*push;a.y+=n.y*push;b.y-=n.y*push;
     }
   }
