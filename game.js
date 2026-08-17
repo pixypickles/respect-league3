@@ -8,7 +8,7 @@ const clockEl = document.getElementById("clock");
 const msgEl = document.getElementById("message");
 
 const W = 1280, H = 720;
-const COURT = { x: 75, y: 62, w: 1130, h: 596 };
+const COURT = { x: 205, y: 62, w: 870, h: 596 };
 const GOAL_H = 210;
 const PLAYER_R = 20;
 const BALL_R = 9;
@@ -42,6 +42,7 @@ const input = {
   dash: false,
   dashTimer: 0,
   dashCooldown: 0,
+  passCallTimer: 0,
   shootDown: false,
   shootStarted: 0
 };
@@ -64,24 +65,42 @@ function makePlayer(team, x,y, role="field", controlled=false) {
 
 function setupTeams() {
   teams.blue.length=0; teams.red.length=0;
-  teams.blue.push(makePlayer("blue", 310, 360, "field", true));
-  teams.blue.push(makePlayer("blue", 470, 210));
-  teams.blue.push(makePlayer("blue", 470, 510));
-  teams.blue.push(makePlayer("blue", 655, 360));
-  teams.blue.push(makePlayer("blue", 112, 360, "gk"));
+  teams.blue.push(makePlayer("blue", 440, 360, "field", true));
+  teams.blue.push(makePlayer("blue", 535, 210));
+  teams.blue.push(makePlayer("blue", 535, 510));
+  teams.blue.push(makePlayer("blue", 620, 360));
+  teams.blue.push(makePlayer("blue", 238, 360, "gk"));
 
-  teams.red.push(makePlayer("red", 970, 360));
-  teams.red.push(makePlayer("red", 810, 210));
-  teams.red.push(makePlayer("red", 810, 510));
-  teams.red.push(makePlayer("red", 625, 280));
-  teams.red.push(makePlayer("red", 1168, 360, "gk"));
+  teams.red.push(makePlayer("red", 840, 360));
+  teams.red.push(makePlayer("red", 745, 210));
+  teams.red.push(makePlayer("red", 745, 510));
+  teams.red.push(makePlayer("red", 660, 280));
+  teams.red.push(makePlayer("red", 1042, 360, "gk"));
 }
 setupTeams();
 
 const controlled = ()=>teams.blue.find(p=>p.controlled);
 
+function blueCpuOwner() {
+  return ball.owner && ball.owner.team==="blue" && !ball.owner.controlled ? ball.owner : null;
+}
+
+function requestPassToControlled() {
+  // Keep the request alive briefly so it still works during a loose touch,
+  // immediately after a pass, or while a CPU teammate is trapping the ball.
+  input.passCallTimer = .85;
+  showMessage("CALL PASS", .35);
+
+  const owner = blueCpuOwner();
+  if(owner && owner.cooldown<=.12) {
+    doPass(owner, controlled());
+    input.passCallTimer = 0;
+  }
+}
+
+
 const ball = {
-  x: 342, y: 360, z:0,
+  x: 472, y: 360, z:0,
   vx:0, vy:0, vz:0,
   owner:null,
   lastTouch:null,
@@ -97,17 +116,19 @@ function resetKickoff(team="blue") {
     p.vx=p.vy=0; p.slide=0; p.kickAnim=0; p.cooldown=.35; p.receiveIntent=false;
   }
   const b=teams.blue, r=teams.red;
-  Object.assign(b[0],{x:350,y:360});
-  Object.assign(b[1],{x:470,y:210});
-  Object.assign(b[2],{x:470,y:510});
-  Object.assign(b[3],{x:625,y:360});
-  Object.assign(b[4],{x:112,y:360});
-  Object.assign(r[0],{x:930,y:360});
-  Object.assign(r[1],{x:810,y:210});
-  Object.assign(r[2],{x:810,y:510});
-  Object.assign(r[3],{x:655,y:300});
-  Object.assign(r[4],{x:1168,y:360});
+  Object.assign(b[0],{x:440,y:360});
+  Object.assign(b[1],{x:535,y:210});
+  Object.assign(b[2],{x:535,y:510});
+  Object.assign(b[3],{x:620,y:360});
+  Object.assign(b[4],{x:238,y:360});
+  Object.assign(r[0],{x:840,y:360});
+  Object.assign(r[1],{x:745,y:210});
+  Object.assign(r[2],{x:745,y:510});
+  Object.assign(r[3],{x:660,y:300});
+  Object.assign(r[4],{x:1042,y:360});
   const starter = team==="blue"?b[0]:r[0];
+  input.passCallTimer=0;
+  ball.returnRequested=false;
   ball.owner=starter;
   ball.x=starter.x+(team==="blue"?30:-30);
   ball.y=starter.y;
@@ -414,6 +435,13 @@ function aiMoveOffBall(p,dt) {
 function aiWithBall(p,dt) {
   p.possessionTime+=dt;
   p.aiTimer-=dt;
+
+  // Player pass-call has top priority for a short window.
+  if(p.team==="blue" && !p.controlled && input.passCallTimer>0 && p.cooldown<=.12) {
+    doPass(p,controlled());
+    input.passCallTimer=0;
+    return;
+  }
   const near=closestOpponent(p);
   const attack=p.team==="blue"?1:-1;
   const goalX=p.team==="blue"?COURT.x+COURT.w:COURT.x;
@@ -562,6 +590,14 @@ function updatePhysics(dt) {
       if(p.cooldown>.16) continue;
       if(attemptTrap(p,dt)) break;
     }
+  }
+
+  // Persistent pass call: if a CPU teammate gains control during the request window,
+  // return/pass it to the controlled player immediately.
+  input.passCallTimer=Math.max(0,input.passCallTimer-dt);
+  if(input.passCallTimer>0 && ball.owner && ball.owner.team==="blue" && ball.owner!==controlled() && ball.owner.cooldown<=.12) {
+    doPass(ball.owner,controlled());
+    input.passCallTimer=0;
   }
 
   // Return pass: press pass while outgoing pass is still traveling to teammate.
@@ -800,18 +836,28 @@ dashBtn.addEventListener("pointerdown",e=>{
 passBtn.addEventListener("pointerdown",e=>{
   e.preventDefault();
   const c=controlled();
+
   if(ball.owner===c) {
     doPass(c);
-  } else if(!ball.owner && ball.passFrom===c && ball.passTarget && ball.passTarget.team==="blue") {
+    return;
+  }
+
+  // If our pass is still travelling to a teammate, this means one-two / return request.
+  if(!ball.owner && ball.passFrom===c && ball.passTarget && ball.passTarget.team==="blue") {
     ball.returnRequested=true;
     showMessage("RETURN REQUEST",.35);
-  } else if(ball.owner && ball.owner.team==="blue" && ball.owner!==c) {
-    // off-ball: ask CPU teammate for a pass to player
-    doPass(ball.owner,c);
-    showMessage("CALL PASS",.35);
-  } else {
-    offBallAction("blue","poke");
+    return;
   }
+
+  // Whenever our team has the ball, or the ball was most recently played by blue,
+  // remember the request instead of requiring a perfect single-frame press.
+  if((ball.owner && ball.owner.team==="blue") ||
+     (!ball.owner && ball.lastTouch && ball.lastTouch.team==="blue")) {
+    requestPassToControlled();
+    return;
+  }
+
+  offBallAction("blue","poke");
 });
 passBtn.addEventListener("pointerup",()=>{});
 

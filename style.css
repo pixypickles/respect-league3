@@ -82,10 +82,10 @@ body {
 }
 
 #stickZone {
-  left: max(12px, env(safe-area-inset-left));
-  bottom: max(10px, env(safe-area-inset-bottom));
-  width: min(31vw, 270px);
-  height: min(31vw, 270px);
+  left: max(4px, env(safe-area-inset-left));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  width: min(16vw, 190px);
+  height: min(48vw, 300px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -93,7 +93,7 @@ body {
 
 #stickBase {
   position: relative;
-  width: 58%;
+  width: min(13vw, 145px);
   aspect-ratio: 1;
   border-radius: 50%;
   border: 4px solid rgba(255,255,255,.38);
@@ -114,10 +114,11 @@ body {
 }
 
 #buttons {
-  right: max(10px, env(safe-area-inset-right));
-  bottom: max(10px, env(safe-area-inset-bottom));
-  width: min(34vw, 315px);
-  height: min(29vw, 235px);
+  right: max(4px, env(safe-area-inset-right));
+  top: 15%;
+  bottom: auto;
+  width: min(16vw, 190px);
+  height: 70%;
 }
 
 .game-btn {
@@ -133,7 +134,7 @@ body {
   font-size: clamp(11px, 1.8vw, 18px);
   text-shadow: 0 2px 3px rgba(0,0,0,.45);
   box-shadow: 0 3px 0 rgba(0,0,0,.15), inset 0 2px 8px rgba(255,255,255,.08);
-  opacity: .58;
+  opacity: .72;
   outline: 0;
 }
 
@@ -144,10 +145,10 @@ body {
   box-shadow: 0 2px 0 rgba(0,0,0,.24), inset 0 3px 9px rgba(0,0,0,.18);
 }
 
-.pass  { left: 0;  top: 46%; background: rgba(59,130,246,.72); }
-.trap  { left: 38%; top: 3%; background: rgba(34,197,94,.72); }
-.shoot { right: 0; top: 43%; background: rgba(239,68,68,.72); }
-.dash  { left: 40%; bottom: 0; background: rgba(245,158,11,.72); }
+.pass  { left: 4%; top: 36%; background: rgba(59,130,246,.72); }
+.trap  { right: 4%; top: 10%; background: rgba(34,197,94,.72); }
+.shoot { right: 4%; top: 48%; background: rgba(239,68,68,.72); }
+.dash  { right: 4%; bottom: 4%; background: rgba(245,158,11,.72); }
 
 #message {
   position: absolute;
