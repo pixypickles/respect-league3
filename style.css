@@ -203,3 +203,162 @@ body {
   top: auto;
   bottom: -5%;
 }
+
+
+/* ===== v22 Team / Mode UI ===== */
+#score {
+  max-width: 58vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: clamp(12px, 2vw, 23px);
+}
+
+.menu-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4vh 10vw;
+  background: rgba(10, 18, 30, .84);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.menu-overlay.hidden {
+  display: none;
+}
+
+.menu-panel {
+  width: min(920px, 82vw);
+  max-height: 88vh;
+  overflow: auto;
+  text-align: center;
+  color: white;
+  background: rgba(15, 23, 42, .88);
+  border: 2px solid rgba(255,255,255,.18);
+  border-radius: 22px;
+  padding: clamp(16px, 3vw, 30px);
+  box-shadow: 0 18px 48px rgba(0,0,0,.4);
+}
+
+.menu-panel.hidden { display: none; }
+
+.menu-panel h1 {
+  margin: 4px 0 18px;
+  font-size: clamp(24px, 4vw, 42px);
+}
+
+.menu-kicker {
+  font-size: clamp(10px, 1.5vw, 14px);
+  font-weight: 900;
+  letter-spacing: .16em;
+  opacity: .7;
+}
+
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.team-card {
+  min-height: 145px;
+  border: 2px solid rgba(255,255,255,.16);
+  border-radius: 18px;
+  background: rgba(255,255,255,.07);
+  color: white;
+  padding: 12px 8px;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.team-card:active {
+  transform: scale(.97);
+}
+
+.kit-preview {
+  width: 64px;
+  height: 74px;
+  border-radius: 13px 13px 18px 18px;
+  margin: 0 auto 9px;
+  border: 2px solid rgba(255,255,255,.4);
+  box-shadow: 0 7px 16px rgba(0,0,0,.3);
+}
+
+.kit-blizzard {
+  background: repeating-linear-gradient(90deg,#f8fafc 0 10px,#2563eb 10px 20px);
+}
+.kit-salvida-a { background: #7a1832; }
+.kit-salvida-b { background: #22c7c4; }
+.kit-takezo {
+  background: repeating-linear-gradient(0deg,#172554 0 18px,#f05aa6 18px 36px);
+}
+.kit-manchester-p { background: #081a3a; }
+
+.team-name {
+  display: block;
+  font-size: clamp(10px, 1.55vw, 15px);
+  line-height: 1.2;
+}
+
+.mode-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.menu-button {
+  border: 2px solid rgba(255,255,255,.25);
+  border-radius: 14px;
+  padding: 14px 22px;
+  background: rgba(255,255,255,.10);
+  color: white;
+  font-weight: 900;
+  font-size: clamp(13px, 2vw, 18px);
+}
+
+.menu-button.primary {
+  background: rgba(37, 99, 235, .72);
+}
+.menu-button.small {
+  padding: 10px 16px;
+  font-size: clamp(11px, 1.5vw, 14px);
+}
+
+.result-score {
+  font-size: clamp(34px, 7vw, 76px);
+  font-weight: 950;
+  margin: 4px 0 16px;
+}
+
+.tournament-progress {
+  min-height: 26px;
+  margin: 0 0 16px;
+  font-weight: 800;
+  opacity: .85;
+}
+
+body.menu-open #stickZone,
+body.menu-open #buttons,
+body.menu-open #hud {
+  opacity: .16;
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  .team-grid {
+    grid-template-columns: repeat(3, minmax(105px, 1fr));
+  }
+  .team-card {
+    min-height: 120px;
+  }
+  .kit-preview {
+    width: 48px;
+    height: 56px;
+  }
+}

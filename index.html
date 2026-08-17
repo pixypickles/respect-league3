@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <meta name="theme-color" content="#111827" />
-  <title>Futsal Trap Game v21</title>
+  <title>Futsal Trap Game v22</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -15,7 +15,7 @@
     <canvas id="game" width="1280" height="720" aria-label="Futsal game"></canvas>
 
     <div id="hud">
-      <div id="score">BLUE 0 - 0 RED</div><div id="versionTag">v21</div>
+      <div id="score">BLUE 0 - 0 RED</div><div id="versionTag">v22</div>
       <div id="clock">03:00</div>
     </div>
 
@@ -33,6 +33,40 @@
     </div>
 
     <div id="message"></div>
+
+    <div id="menuOverlay" class="menu-overlay">
+      <section id="teamScreen" class="menu-panel">
+        <div class="menu-kicker">FUTSAL TOURNAMENT</div>
+        <h1>チームを選択</h1>
+        <div id="teamGrid" class="team-grid"></div>
+      </section>
+
+      <section id="modeScreen" class="menu-panel hidden">
+        <div class="menu-kicker">SELECT MODE</div>
+        <h1 id="selectedTeamName">TEAM</h1>
+        <div class="mode-buttons">
+          <button id="tournamentBtn" class="menu-button primary">4試合 勝ち抜きモード</button>
+          <button id="freeMatchBtn" class="menu-button">フリーマッチ</button>
+          <button id="modeBackBtn" class="menu-button small">チーム選択へ戻る</button>
+        </div>
+      </section>
+
+      <section id="opponentScreen" class="menu-panel hidden">
+        <div class="menu-kicker">FREE MATCH</div>
+        <h1>対戦相手を選択</h1>
+        <div id="opponentGrid" class="team-grid"></div>
+        <button id="opponentBackBtn" class="menu-button small">戻る</button>
+      </section>
+
+      <section id="resultScreen" class="menu-panel hidden">
+        <div id="resultKicker" class="menu-kicker">MATCH RESULT</div>
+        <h1 id="resultTitle">RESULT</h1>
+        <div id="resultScore" class="result-score">0 - 0</div>
+        <div id="tournamentProgress" class="tournament-progress"></div>
+        <div id="resultActions" class="mode-buttons"></div>
+      </section>
+    </div>
+
   </main>
 
   <script src="game.js"></script>

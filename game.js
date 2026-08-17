@@ -6,6 +6,23 @@ const ctx = canvas.getContext("2d");
 const scoreEl = document.getElementById("score");
 const clockEl = document.getElementById("clock");
 const msgEl = document.getElementById("message");
+const menuOverlayEl = document.getElementById("menuOverlay");
+const teamScreenEl = document.getElementById("teamScreen");
+const modeScreenEl = document.getElementById("modeScreen");
+const opponentScreenEl = document.getElementById("opponentScreen");
+const resultScreenEl = document.getElementById("resultScreen");
+const teamGridEl = document.getElementById("teamGrid");
+const opponentGridEl = document.getElementById("opponentGrid");
+const selectedTeamNameEl = document.getElementById("selectedTeamName");
+const tournamentBtnEl = document.getElementById("tournamentBtn");
+const freeMatchBtnEl = document.getElementById("freeMatchBtn");
+const modeBackBtnEl = document.getElementById("modeBackBtn");
+const opponentBackBtnEl = document.getElementById("opponentBackBtn");
+const resultKickerEl = document.getElementById("resultKicker");
+const resultTitleEl = document.getElementById("resultTitle");
+const resultScoreEl = document.getElementById("resultScore");
+const tournamentProgressEl = document.getElementById("tournamentProgress");
+const resultActionsEl = document.getElementById("resultActions");
 
 const W = 1280, H = 720;
 const COURT = { x: 205, y: 62, w: 870, h: 596 };
@@ -19,6 +36,30 @@ const RED = "#dc2626";
 const SKIN = "#ffd2ad";
 const DARK = "#1f2937";
 
+const TEAM_DEFS = [
+  {id:"blizzard", name:"BLIZZARD FOX", kit:"blizzard", primary:"#f8fafc", secondary:"#2563eb"},
+  {id:"salvida-a", name:"SALVIDA A", kit:"salvida-a", primary:"#7a1832", secondary:"#7a1832"},
+  {id:"salvida-b", name:"SALVIDA B", kit:"salvida-b", primary:"#22c7c4", secondary:"#22c7c4"},
+  {id:"takezo", name:"TAKE-ZO", kit:"takezo", primary:"#f05aa6", secondary:"#172554"},
+  {id:"manchester-p", name:"漫チェスターP", kit:"manchester-p", primary:"#081a3a", secondary:"#081a3a"}
+];
+
+let selectedTeamId="blizzard";
+let opponentTeamId="salvida-a";
+let gameMode=null;
+let gamePhase="menu";
+let tournamentOpponents=[];
+let tournamentRound=0;
+let matchFinished=false;
+
+function teamDef(id){
+  return TEAM_DEFS.find(t=>t.id===id) || TEAM_DEFS[0];
+}
+function sideTeam(side){
+  return side==="blue" ? teamDef(selectedTeamId) : teamDef(opponentTeamId);
+}
+
+
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const dist = (a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const norm = (x,y)=>{
@@ -27,6 +68,165 @@ const norm = (x,y)=>{
 };
 const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
+
+function setMenuScreen(which){
+  for(const el of [teamScreenEl,modeScreenEl,opponentScreenEl,resultScreenEl]){
+    el.classList.add("hidden");
+  }
+  which.classList.remove("hidden");
+  menuOverlayEl.classList.remove("hidden");
+  document.body.classList.add("menu-open");
+}
+
+function hideMenu(){
+  menuOverlayEl.classList.add("hidden");
+  document.body.classList.remove("menu-open");
+}
+
+function kitClass(id){ return "kit-"+id; }
+
+function makeTeamCard(t,onPick){
+  const btn=document.createElement("button");
+  btn.className="team-card";
+  const kit=document.createElement("div");
+  kit.className="kit-preview "+kitClass(t.id);
+  const name=document.createElement("span");
+  name.className="team-name";
+  name.textContent=t.name;
+  btn.appendChild(kit);
+  btn.appendChild(name);
+  btn.addEventListener("click",()=>onPick(t.id));
+  return btn;
+}
+
+function renderTeamSelection(){
+  teamGridEl.innerHTML="";
+  for(const t of TEAM_DEFS){
+    teamGridEl.appendChild(makeTeamCard(t,(id)=>{
+      selectedTeamId=id;
+      selectedTeamNameEl.textContent=teamDef(id).name;
+      setMenuScreen(modeScreenEl);
+    }));
+  }
+}
+
+function renderOpponentSelection(){
+  opponentGridEl.innerHTML="";
+  for(const t of TEAM_DEFS){
+    if(t.id===selectedTeamId) continue;
+    opponentGridEl.appendChild(makeTeamCard(t,(id)=>{
+      gameMode="free";
+      startMatch(id);
+    }));
+  }
+}
+
+function updateScoreLabel(){
+  scoreEl.textContent=`${teamDef(selectedTeamId).name} ${scoreBlue} - ${scoreRed} ${teamDef(opponentTeamId).name}`;
+}
+
+function prepareMatch(){
+  scoreBlue=0;
+  scoreRed=0;
+  matchLeft=MATCH_SECONDS;
+  goalPause=0;
+  messageTimer=0;
+  matchFinished=false;
+  input.passCallTimer=0;
+  input.shootDown=false;
+  input.shootBallLock=false;
+  if(input.pendingShotTimer!==null){
+    clearTimeout(input.pendingShotTimer);
+    input.pendingShotTimer=null;
+  }
+  updateScoreLabel();
+  clockEl.textContent="3:00";
+  resetKickoff("blue");
+}
+
+function startMatch(opponentId){
+  opponentTeamId=opponentId;
+  gamePhase="match";
+  prepareMatch();
+  hideMenu();
+}
+
+function addResultButton(text,primary,fn){
+  const b=document.createElement("button");
+  b.className="menu-button"+(primary?" primary":"");
+  b.textContent=text;
+  b.addEventListener("click",fn);
+  resultActionsEl.appendChild(b);
+}
+
+function returnToMainMenu(){
+  gameMode=null;
+  gamePhase="menu";
+  tournamentOpponents=[];
+  tournamentRound=0;
+  setMenuScreen(teamScreenEl);
+}
+
+function finishMatch(){
+  if(matchFinished) return;
+  matchFinished=true;
+  gamePhase="result";
+  ball.owner=null;
+  ball.vx=ball.vy=ball.vz=0;
+  resultActionsEl.innerHTML="";
+  resultScoreEl.textContent=`${scoreBlue} - ${scoreRed}`;
+  resultKickerEl.textContent=gameMode==="tournament" ? `TOURNAMENT ${tournamentRound+1}/4` : "FREE MATCH";
+  tournamentProgressEl.textContent="";
+
+  if(gameMode==="tournament"){
+    if(scoreBlue>scoreRed){
+      if(tournamentRound>=3){
+        resultTitleEl.textContent="優勝！";
+        tournamentProgressEl.textContent="4試合勝ち抜き達成";
+        addResultButton("チーム選択へ",true,returnToMainMenu);
+      } else {
+        resultTitleEl.textContent="WIN";
+        tournamentProgressEl.textContent=`${tournamentRound+1}勝 / 4勝`;
+        addResultButton("次の試合へ",true,()=>{
+          tournamentRound++;
+          startMatch(tournamentOpponents[tournamentRound]);
+        });
+        addResultButton("終了",false,returnToMainMenu);
+      }
+    } else if(scoreBlue===scoreRed){
+      resultTitleEl.textContent="DRAW";
+      tournamentProgressEl.textContent="勝ち抜くには勝利が必要です";
+      addResultButton("同じ相手と再戦",true,()=>startMatch(tournamentOpponents[tournamentRound]));
+      addResultButton("終了",false,returnToMainMenu);
+    } else {
+      resultTitleEl.textContent="敗退";
+      tournamentProgressEl.textContent=`${tournamentRound}勝で終了`;
+      addResultButton("もう一度挑戦",true,()=>{
+        tournamentRound=0;
+        startMatch(tournamentOpponents[0]);
+      });
+      addResultButton("チーム選択へ",false,returnToMainMenu);
+    }
+  } else {
+    resultTitleEl.textContent=scoreBlue>scoreRed?"WIN":(scoreBlue<scoreRed?"LOSE":"DRAW");
+    addResultButton("再戦",true,()=>startMatch(opponentTeamId));
+    addResultButton("相手を選び直す",false,()=>{
+      gamePhase="menu";
+      renderOpponentSelection();
+      setMenuScreen(opponentScreenEl);
+    });
+    addResultButton("チーム選択へ",false,returnToMainMenu);
+  }
+  setMenuScreen(resultScreenEl);
+}
+
+function startTournament(){
+  gameMode="tournament";
+  tournamentOpponents=TEAM_DEFS.filter(t=>t.id!==selectedTeamId).map(t=>t.id);
+  tournamentRound=0;
+  startMatch(tournamentOpponents[0]);
+}
+
 
 let last = performance.now();
 let elapsed = 0;
@@ -1237,12 +1437,13 @@ function handleWallsAndGoals() {
 
 function goal(who) {
   goalPause=1.1;
-  showMessage(`${who} GOAL!`,1);
-  scoreEl.textContent=`BLUE ${scoreBlue} - ${scoreRed} RED`;
+  showMessage(`${who==="BLUE"?teamDef(selectedTeamId).name:teamDef(opponentTeamId).name} GOAL!`,1);
+  updateScoreLabel();
   ball.owner=null;ball.vx=ball.vy=ball.vz=0;ball.shot=false;
 }
 
 function update(dt) {
+  if(gamePhase!=="match") return;
   if(messageTimer>0){messageTimer-=dt;if(messageTimer<=0)msgEl.style.opacity="0";}
   if(goalPause>0) {
     goalPause-=dt;
@@ -1253,7 +1454,12 @@ function update(dt) {
   matchLeft=Math.max(0,matchLeft-dt);
   const m=Math.floor(matchLeft/60),s=Math.floor(matchLeft%60).toString().padStart(2,"0");
   clockEl.textContent=`${m}:${s}`;
-  if(matchLeft<=0){ showMessage("TIME UP",1); matchLeft=MATCH_SECONDS; scoreBlue=scoreRed=0; scoreEl.textContent="BLUE 0 - 0 RED"; resetKickoff("blue"); }
+  if(matchLeft<=0){
+    clockEl.textContent="0:00";
+    showMessage("TIME UP",1);
+    finishMatch();
+    return;
+  }
 
   for(const p of teams.blue) p.role==="gk"?updateGK(p,dt):updateAI(p,dt);
   for(const p of teams.red) p.role==="gk"?updateGK(p,dt):updateAI(p,dt);
@@ -1288,6 +1494,52 @@ function drawCourt() {
   ctx.strokeRect(COURT.x+COURT.w-135,H/2-150,135,300);
 }
 
+
+function drawKitTorso(p){
+  const kit=sideTeam(p.team);
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(-13,-13,27,35,8);
+  ctx.clip();
+
+  if(kit.kit==="blizzard"){
+    ctx.fillStyle="#f8fafc";
+    ctx.fillRect(-14,-14,30,38);
+    ctx.fillStyle="#2563eb";
+    for(let x=-13;x<14;x+=10) ctx.fillRect(x,-14,5,38);
+  } else if(kit.kit==="takezo"){
+    ctx.fillStyle="#172554";
+    ctx.fillRect(-14,-14,30,38);
+    ctx.fillStyle="#f05aa6";
+    ctx.fillRect(-14,-9,30,10);
+    ctx.fillRect(-14,11,30,10);
+  } else {
+    ctx.fillStyle=kit.primary;
+    ctx.fillRect(-14,-14,30,38);
+  }
+  ctx.restore();
+
+  ctx.strokeStyle="rgba(255,255,255,.28)";
+  ctx.lineWidth=1.5;
+  ctx.beginPath();
+  ctx.roundRect(-13,-13,27,35,8);
+  ctx.stroke();
+}
+
+function drawSlideKit(p){
+  const kit=sideTeam(p.team);
+  if(kit.kit==="blizzard"){
+    ctx.fillStyle="#f8fafc";ctx.fillRect(-23,-11,48,22);
+    ctx.fillStyle="#2563eb";
+    for(let x=-22;x<25;x+=12) ctx.fillRect(x,-11,6,22);
+  } else if(kit.kit==="takezo"){
+    ctx.fillStyle="#172554";ctx.fillRect(-23,-11,48,22);
+    ctx.fillStyle="#f05aa6";ctx.fillRect(-23,-7,48,7);ctx.fillRect(-23,6,48,7);
+  } else {
+    ctx.fillStyle=kit.primary;ctx.fillRect(-23,-11,48,22);
+  }
+}
+
 function drawPlayer(p) {
   ctx.save();
   ctx.translate(p.x,p.y);
@@ -1300,8 +1552,7 @@ function drawPlayer(p) {
     ctx.moveTo(5,10);ctx.lineTo(14,28);
     ctx.stroke();
 
-    ctx.fillStyle=p.team==="blue"?BLUE:RED;
-    ctx.beginPath();ctx.roundRect(-13,-13,27,35,8);ctx.fill();
+    drawKitTorso(p);
 
     ctx.strokeStyle=SKIN;ctx.lineWidth=6;
     ctx.beginPath();
@@ -1325,8 +1576,7 @@ function drawPlayer(p) {
 
   if(p.slide>0) {
     ctx.rotate(-.15);
-    ctx.fillStyle=p.team==="blue"?BLUE:RED;
-    ctx.fillRect(-23,-11,48,22);
+    drawSlideKit(p);
     ctx.strokeStyle=DARK;ctx.lineWidth=6;
     ctx.beginPath();ctx.moveTo(12,7);ctx.lineTo(43,15);ctx.moveTo(9,-6);ctx.lineTo(39,-16);ctx.stroke();
     ctx.fillStyle=SKIN;ctx.beginPath();ctx.arc(-22,0,10,0,Math.PI*2);ctx.fill();
@@ -1345,8 +1595,7 @@ function drawPlayer(p) {
   ctx.stroke();
 
   // body
-  ctx.fillStyle=p.team==="blue"?BLUE:RED;
-  ctx.beginPath();ctx.roundRect(-13,-13,27,35,8);ctx.fill();
+  drawKitTorso(p);
 
   // arms
   ctx.strokeStyle=SKIN;ctx.lineWidth=6;
@@ -1672,5 +1921,19 @@ setInterval(()=>{
   input.sx=x||y?n.x:0;input.sy=x||y?n.y:0;
 },16);
 
+
+tournamentBtnEl.addEventListener("click",startTournament);
+freeMatchBtnEl.addEventListener("click",()=>{
+  renderOpponentSelection();
+  setMenuScreen(opponentScreenEl);
+});
+modeBackBtnEl.addEventListener("click",()=>setMenuScreen(teamScreenEl));
+opponentBackBtnEl.addEventListener("click",()=>setMenuScreen(modeScreenEl));
+
+renderTeamSelection();
+selectedTeamNameEl.textContent=teamDef(selectedTeamId).name;
 resetKickoff("blue");
+updateScoreLabel();
+setMenuScreen(teamScreenEl);
+
 })();
