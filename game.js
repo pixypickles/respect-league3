@@ -1584,7 +1584,7 @@ function updatePhysics(dt) {
     let dx=runMag>.18?input.sx:c.dirX, dy=runMag>.18?input.sy:c.dirY;
     // Put the return ball well ahead of the player's running direction.
     // The short burst dash is intended to help the player catch up and fine-tune the run.
-    const lead=255;
+    const lead=190;
     const targetX=clamp(c.x+dx*lead,COURT.x+45,COURT.x+COURT.w-45);
     const targetY=clamp(c.y+dy*lead,COURT.y+45,COURT.y+COURT.h-45);
     receiver.receiveIntent=false;
@@ -1931,9 +1931,9 @@ function dashTouchSkill(p) {
   ball.x = owned ? p.x+n.x*24 : ball.x;
   ball.y = owned ? p.y+16+n.y*10 : ball.y;
   ball.z=5;
-  ball.vx=n.x*315;
-  ball.vy=n.y*315;
-  ball.vz=92;
+  ball.vx=n.x*365;
+  ball.vy=n.y*365;
+  ball.vz=88;
   ball.shot=false;
   ball.power=315;
   ball.touchGrace=.10;
@@ -1945,8 +1945,8 @@ function dashTouchSkill(p) {
   ball.dashProtectTeam=p.team;
 
   // Slightly longer burst than ordinary dash so the player catches the touch.
-  input.dashTimer=.30;
-  input.dashCooldown=.42;
+  input.dashTimer=.34;
+  input.dashCooldown=.44;
   input.postKickNoAutoTrap=.24;
 
   p.dirX=n.x;
@@ -2083,9 +2083,24 @@ trapBtn.addEventListener("pointercancel",releaseTrap);
 // DASH is a quick burst, not a hold-to-sprint button.
 dashBtn.addEventListener("pointerdown",e=>{
   e.preventDefault();
-  if(input.dashCooldown<=0){
-    const c=controlled();
+  const c=controlled();
 
+  // After the player's pass, DASH doubles as a one-two return request.
+  if(!ball.owner && ball.passFrom===c && ball.passTarget && ball.passTarget.team==="blue"){
+    ball.returnRequested=true;
+    showMessage("RETURN REQUEST",.35);
+
+    if(input.dashCooldown<=0){
+      input.dashTimer=.19;
+      input.dashCooldown=.34;
+    }
+
+    dashBtn.classList.add("active");
+    setTimeout(()=>dashBtn.classList.remove("active"),150);
+    return;
+  }
+
+  if(input.dashCooldown<=0){
     if(!dashTouchSkill(c)){
       input.dashTimer=.19;
       input.dashCooldown=.34;
