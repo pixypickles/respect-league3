@@ -362,3 +362,43 @@ body.menu-open #hud {
     height: 56px;
   }
 }
+
+
+/* v23: allow vertical scrolling inside menu screens on short landscape displays */
+.menu-overlay {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y !important;
+  overscroll-behavior-y: contain;
+  align-items: flex-start;
+}
+
+.menu-panel {
+  flex: 0 0 auto;
+  margin: max(12px, 3vh) auto;
+  max-height: none;
+  overflow: visible;
+  touch-action: pan-y !important;
+}
+
+.menu-panel *,
+.team-grid,
+.team-card,
+.mode-buttons,
+.menu-button {
+  touch-action: pan-y !important;
+}
+
+@media (max-height: 520px) {
+  .menu-overlay {
+    padding-top: 8px;
+    padding-bottom: 24px;
+  }
+  .menu-panel {
+    margin-top: 8px;
+    margin-bottom: 24px;
+    padding-top: 14px;
+    padding-bottom: 18px;
+  }
+}

@@ -327,7 +327,9 @@ const ball = {
   power:0,
   touchGrace:0,
   protectedTeam:null,
-  cpuPassProtect:0
+  cpuPassProtect:0,
+  dashProtectTimer:0,
+  dashProtectTeam:null
 };
 
 function resetKickoff(team="blue") {
@@ -353,6 +355,7 @@ function resetKickoff(team="blue") {
   ball.y=starter.y;
   ball.z=0; ball.vx=ball.vy=ball.vz=0; ball.shot=false; ball.passTarget=null;
   ball.touchGrace=.18; ball.protectedTeam=starter.team;
+  ball.dashProtectTimer=0; ball.dashProtectTeam=null;
   starter.possessionTime=0;
 }
 
@@ -559,6 +562,8 @@ function kickNearbyLooseBall(p, kind="pass") {
 function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
   const n=norm(dx,dy);
   ball.owner=null;
+  ball.dashProtectTimer=0;
+  ball.dashProtectTeam=null;
   ball.x=p.x+n.x*28;
   ball.y=p.y+n.y*28;
   ball.z=2;
@@ -682,6 +687,12 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
+  // Protected chipped dash ball: only a perfectly close manual TRAP can cut it.
+  if(dashBallProtectedAgainst(p)){
+    if(manualTrapCutProtectedBall(p)) return true;
+    return false;
+  }
+
   if(!trapWindowFor(p)) return false;
 
   // CPU passes need a tiny clean-flight window. Without this, two nearby CPUs
@@ -773,6 +784,10 @@ function attemptTrap(p, dt) {
 function shortTrapSteal(actor) {
   if(!actor || actor.role==="gk" || actor.cooldown>0 || actor.stagger>0) return false;
 
+  if(dashBallProtectedAgainst(actor)){
+    return manualTrapCutProtectedBall(actor);
+  }
+
   const enemyOwner = ball.owner && ball.owner.team!==actor.team ? ball.owner : null;
 
   // Shorter reach than PASS poke / SHOULDER.
@@ -816,6 +831,8 @@ function shortTrapSteal(actor) {
 }
 
 function defensivePoke(actor) {
+  if(dashBallProtectedAgainst(actor)) return false;
+
   if(ball.owner && ball.owner.team!==actor.team && dist(actor,ball.owner)<58) {
     const e=ball.owner;
     const n=norm(e.x-actor.x,e.y-actor.y);
@@ -1184,7 +1201,7 @@ function updateAI(p,dt) {
   if(p.controlled){updateControlled(p,dt);return;}
   if(p.slide>0)return;
 
-  if(!ball.owner && nearbyLooseBallFor(p,74)) {
+  if(!ball.owner && nearbyLooseBallFor(p,74) && !dashBallProtectedAgainst(p)) {
     const squad=teamPlayers(p.team).filter(q=>q.role!=="gk" && !q.controlled);
     const nearest=squad.slice().sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
     if(nearest===p && ball.touchGrace<=0) {
@@ -1308,6 +1325,8 @@ function updatePhysics(dt) {
   input.postKickNoAutoTrap=Math.max(0,input.postKickNoAutoTrap-dt);
   ball.touchGrace=Math.max(0,ball.touchGrace-dt);
   ball.cpuPassProtect=Math.max(0,ball.cpuPassProtect-dt);
+  ball.dashProtectTimer=Math.max(0,ball.dashProtectTimer-dt);
+  if(ball.dashProtectTimer<=0) ball.dashProtectTeam=null;
   if(ball.touchGrace<=0) ball.protectedTeam=null;
 
   for(const p of [...teams.blue,...teams.red]) {
@@ -1693,6 +1712,37 @@ stickZone.addEventListener("pointerup",e=>{if(e.pointerId===stickPointer)release
 stickZone.addEventListener("pointercancel",releaseStick);
 
 
+
+function dashBallProtectedAgainst(p){
+  return ball.dashProtectTimer>0 &&
+         ball.dashProtectTeam &&
+         p.team!==ball.dashProtectTeam;
+}
+
+function manualTrapCutProtectedBall(p){
+  if(!p.controlled) return false;
+  if(!input.trap) return false;
+  if(!dashBallProtectedAgainst(p)) return false;
+
+  // "Body and ball overlap" — deliberately short and strict.
+  const overlap = dist(p,ball)<30 && ball.z<34;
+  if(!overlap) return false;
+
+  ball.dashProtectTimer=0;
+  ball.dashProtectTeam=null;
+  ball.owner=p;
+  ball.passTarget=null;
+  ball.vx=ball.vy=ball.vz=0;
+  ball.z=0;
+  ball.lastTouch=p;
+  ball.touchGrace=.14;
+  ball.protectedTeam=p.team;
+  p.possessionTime=0;
+  p.kickAnim=.14;
+  showMessage("TRAP CUT!",.34);
+  return true;
+}
+
 function dashTouchSkill(p) {
   const owned = ball.owner===p;
   const loose = !ball.owner && ball.z<32 && dist(p,ball)<82;
@@ -1722,6 +1772,11 @@ function dashTouchSkill(p) {
   ball.power=315;
   ball.touchGrace=.10;
   ball.protectedTeam=p.team;
+
+  // Opponents cannot auto-touch this chipped dash ball.
+  // Protection lasts through the small pop and chase.
+  ball.dashProtectTimer=.72;
+  ball.dashProtectTeam=p.team;
 
   // Slightly longer burst than ordinary dash so the player catches the touch.
   input.dashTimer=.30;
@@ -1802,7 +1857,7 @@ passBtn.addEventListener("pointerdown",e=>{
   }
 
   // Directly kick a nearby loose ball without needing TRAP first.
-  if(nearbyLooseBallFor(c,82)) {
+  if(nearbyLooseBallFor(c,82) && !dashBallProtectedAgainst(c)) {
     if(kickNearbyLooseBall(c,"pass")) {
       showMessage("DIRECT PASS",.28);
     }
@@ -1838,6 +1893,7 @@ shootBtn.addEventListener("pointerdown",e=>{
 });
 
 function canPlayerShootNow(c){
+  if(dashBallProtectedAgainst(c)) return false;
   return ball.owner===c ||
          nearbyLooseBallFor(c,116) ||
          (input.shootBallLock && !ball.owner && dist(c,ball)<132 && ball.z<42);
