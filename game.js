@@ -1961,57 +1961,76 @@ function dashTouchSkill(p) {
 }
 
 
-// ---------- Sound effects (v31 single audio channel) ----------
+// ---------- Sound effects (v32 single mobile-safe channel) ----------
 const SFX_FILES={
-  pass:"sfx/pass.wav",
-  shot:"sfx/shot.wav",
-  super:"sfx/super.wav",
-  trap:"sfx/trap.wav",
-  dash:"sfx/dash.wav",
-  poke:"sfx/poke.wav",
-  goal:"sfx/goal.wav",
-  save:"sfx/save.wav"
+  pass:"sfx/pass.mp3",
+  shot:"sfx/shot.mp3",
+  super:"sfx/super.mp3",
+  trap:"sfx/trap.mp3",
+  dash:"sfx/dash.mp3",
+  poke:"sfx/poke.mp3",
+  goal:"sfx/goal.mp3",
+  save:"sfx/save.mp3"
 };
 
-const gameAudio=new Audio();
+const gameAudio=document.createElement("audio");
 gameAudio.preload="auto";
-gameAudio.playsInline=true;
+gameAudio.setAttribute("playsinline","");
+gameAudio.setAttribute("webkit-playsinline","");
 gameAudio.volume=.48;
+document.body.appendChild(gameAudio);
 
 let audioEnabled=false;
+let audioUnlocking=false;
 const sfxLastAt={};
 
-function enableSound(){
-  // Use this exact Audio element for the confirmation tone and every game sound.
-  gameAudio.pause();
-  gameAudio.src="sfx/unlock.wav";
-  gameAudio.currentTime=0;
-  gameAudio.volume=.35;
+function setSoundButton(text,on=false){
+  soundOnBtnEl.textContent=text;
+  if(on) soundOnBtnEl.classList.add("enabled");
+  else soundOnBtnEl.classList.remove("enabled");
+}
 
+function enableSoundFromGesture(e){
+  if(e && e.preventDefault) e.preventDefault();
+  if(audioEnabled || audioUnlocking) return;
+
+  audioUnlocking=true;
+  setSoundButton("🔊 SOUND…");
+
+  // Do not pause/change the element again until this one gesture's play()
+  // resolves. This avoids pointerup+click double-trigger cancellation on mobile.
   try{
+    gameAudio.src="sfx/unlock.mp3";
+    gameAudio.volume=.30;
+    gameAudio.currentTime=0;
+    gameAudio.load();
+
     const p=gameAudio.play();
+
     if(p && p.then){
       p.then(()=>{
         audioEnabled=true;
-        soundOnBtnEl.textContent="🔊 SOUND ON ✓";
-        soundOnBtnEl.classList.add("enabled");
+        audioUnlocking=false;
+        setSoundButton("🔊 SOUND ON ✓",true);
       }).catch(()=>{
         audioEnabled=false;
-        soundOnBtnEl.textContent="🔇 TAP AGAIN";
+        audioUnlocking=false;
+        setSoundButton("🔇 TAP TO ENABLE");
       });
     }else{
       audioEnabled=true;
-      soundOnBtnEl.textContent="🔊 SOUND ON ✓";
-      soundOnBtnEl.classList.add("enabled");
+      audioUnlocking=false;
+      setSoundButton("🔊 SOUND ON ✓",true);
     }
-  }catch(e){
+  }catch(err){
     audioEnabled=false;
-    soundOnBtnEl.textContent="🔇 TAP AGAIN";
+    audioUnlocking=false;
+    setSoundButton("🔇 TAP TO ENABLE");
   }
 }
 
 function sfx(name){
-  if(!audioEnabled) return;
+  if(!audioEnabled || audioUnlocking) return;
   const src=SFX_FILES[name];
   if(!src) return;
 
@@ -2023,28 +2042,26 @@ function sfx(name){
   try{
     gameAudio.pause();
     gameAudio.src=src;
-    gameAudio.currentTime=0;
     gameAudio.volume=name==="goal"?.58:.48;
+    gameAudio.currentTime=0;
+    gameAudio.load();
+
     const p=gameAudio.play();
     if(p && p.catch){
       p.catch(()=>{
         audioEnabled=false;
-        soundOnBtnEl.textContent="🔇 SOUND OFF - TAP";
-        soundOnBtnEl.classList.remove("enabled");
+        setSoundButton("🔇 TAP TO ENABLE");
       });
     }
-  }catch(e){
+  }catch(err){
     audioEnabled=false;
-    soundOnBtnEl.textContent="🔇 SOUND OFF - TAP";
-    soundOnBtnEl.classList.remove("enabled");
+    setSoundButton("🔇 TAP TO ENABLE");
   }
 }
 
-soundOnBtnEl.addEventListener("click",enableSound);
-soundOnBtnEl.addEventListener("pointerup",e=>{
-  if(e && e.preventDefault) e.preventDefault();
-  if(!audioEnabled) enableSound();
-});
+// IMPORTANT: only ONE gesture listener.
+// pointerdown is the earliest genuine touch gesture and avoids pointerup+click duplication.
+soundOnBtnEl.addEventListener("pointerdown",enableSoundFromGesture);
 
 // ---------- Buttons ----------
 const passBtn=document.getElementById("passBtn");

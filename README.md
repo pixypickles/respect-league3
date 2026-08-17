@@ -313,3 +313,15 @@ GitHub Pagesへそのまま配置して遊べます。
 - Web Audioは不使用
 - 再生が拒否された場合はボタン表示を「SOUND OFF - TAP」に戻す
 - 音が有効かどうかをタイトル画面で確認可能
+
+## v32 SOUND ON修正
+- v31の `pointerup + click` 二重実行を廃止
+- SOUND ONは `pointerdown` 1回だけで実行
+- アンロック中は再度SOUND ON処理を実行しない
+- 確認音のplay()が完了するまでAudio要素をpause/変更しない
+- スマホ互換性向上のため効果音をWAVからMP3へ変換
+- 画面上の状態表示：
+  - `SOUND…` = 有効化処理中
+  - `SOUND ON ✓` = 有効
+  - `TAP TO ENABLE` = ブラウザに拒否されたので再タップ可能
+- ゲームのルール/AI/操作には変更なし
