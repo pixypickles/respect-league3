@@ -427,54 +427,22 @@ function doPass(p, forcedTarget=null) {
   }
 }
 function playerShoot(p, chargeSec) {
-  // Direct shot from a nearby loose ball is allowed without trapping first.
-  if(ball.owner!==p) {
-    if((!ball.owner && ball.z<42 && dist(p,ball)<128)) {
-      const stickMag=Math.hypot(input.sx,input.sy);
-      let dx=stickMag>.18?input.sx:p.dirX;
-      let dy=stickMag>.18?input.sy:p.dirY;
-      if(Math.hypot(dx,dy)<.1){dx=p.team==="blue"?1:-1;dy=0;}
+  // v19: SHOT is intentionally simple — always a strong shot.
+  // No loop shot / normal shot / charge tiers.
+  if(ball.owner!==p) return;
 
-      let speed,lift,label;
-      if(chargeSec < .095) {
-        speed=365; lift=165; label="LOOP";
-      } else if(chargeSec > .34) {
-        const t=clamp((chargeSec-.34)/.45,0,1);
-        speed=610+120*t; lift=42; label="POWER";
-      } else {
-        speed=505; lift=26; label="SHOT";
-      }
-
-      const n=norm(dx,dy);
-      ball.owner=null;
-      ball.vx=n.x*speed; ball.vy=n.y*speed; ball.vz=lift;
-      ball.lastTouch=p; ball.passFrom=p; ball.passTarget=null;
-      ball.shot=true; ball.power=speed;
-      ball.touchGrace=.12; ball.protectedTeam=p.team;
-      input.postKickNoAutoTrap=.50;
-      p.kickAnim=.22; p.cooldown=.18;
-      showMessage(label,.35);
-      return;
-    }
-    return;
-  }
   const stickMag=Math.hypot(input.sx,input.sy);
   let dx = stickMag>.18?input.sx:p.dirX;
   let dy = stickMag>.18?input.sy:p.dirY;
-  if(Math.hypot(dx,dy)<.1){dx=p.team==="blue"?1:-1;dy=0;}
-
-  let speed,lift,label;
-  if(chargeSec < .095) {
-    speed=365; lift=165; label="LOOP";
-  } else if(chargeSec > .34) {
-    const t=clamp((chargeSec-.34)/.45,0,1);
-    speed=610+120*t; lift=42; label="POWER";
-  } else {
-    speed=505; lift=26; label="SHOT";
+  if(Math.hypot(dx,dy)<.1){
+    dx=p.team==="blue"?1:-1;
+    dy=0;
   }
+
+  const speed=650;
+  const lift=34;
   kickBall(p,dx,dy,speed,lift,true,null);
-  input.postKickNoAutoTrap=.50;
-  showMessage(label,.35);
+  showMessage("POWER SHOT",.35);
 }
 
 function trapWindowFor(p) {
