@@ -497,3 +497,33 @@ body.practice-open #clock {
   pointer-events:none;
 }
 #runtimeErrorV49.show{display:block;}
+
+
+/* v50: mobile browser visible-height fix.
+   100vh can include browser UI on Android Chrome and hide the bottom of the court. */
+html,
+body {
+  height: 100dvh;
+}
+
+body {
+  min-height: 100dvh;
+}
+
+#gameWrap {
+  height: calc(100dvh - 8px);
+  max-height: calc(100dvh - 8px);
+}
+
+/* Fallback for browsers without dvh support */
+@supports not (height: 100dvh) {
+  html,
+  body {
+    height: 100%;
+  }
+
+  #gameWrap {
+    height: calc(100% - 8px);
+    max-height: calc(100% - 8px);
+  }
+}
