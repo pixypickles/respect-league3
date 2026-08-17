@@ -12,6 +12,7 @@ const modeScreenEl = document.getElementById("modeScreen");
 const opponentScreenEl = document.getElementById("opponentScreen");
 const resultScreenEl = document.getElementById("resultScreen");
 const teamGridEl = document.getElementById("teamGrid");
+const soundOnBtnEl = document.getElementById("soundOnBtn");
 const opponentGridEl = document.getElementById("opponentGrid");
 const selectedTeamNameEl = document.getElementById("selectedTeamName");
 const tournamentBtnEl = document.getElementById("tournamentBtn");
@@ -1960,7 +1961,7 @@ function dashTouchSkill(p) {
 }
 
 
-// ---------- Sound effects (v30 mobile-safe file audio) ----------
+// ---------- Sound effects (v31 single audio channel) ----------
 const SFX_FILES={
   pass:"sfx/pass.wav",
   shot:"sfx/shot.wav",
@@ -1972,106 +1973,77 @@ const SFX_FILES={
   save:"sfx/save.wav"
 };
 
-const sfxPools={};
+const gameAudio=new Audio();
+gameAudio.preload="auto";
+gameAudio.playsInline=true;
+gameAudio.volume=.48;
+
+let audioEnabled=false;
 const sfxLastAt={};
-let audioUnlocked=false;
-let audioUnlocking=false;
-let lastUnlockAttempt=0;
 
-function buildSfxPools(){
-  for(const [name,src] of Object.entries(SFX_FILES)){
-    const pool=[];
-    for(let i=0;i<2;i++){
-      const a=new Audio(src);
-      a.preload="auto";
-      a.playsInline=true;
-      a.volume=name==="goal"?.55:.42;
-      try{ a.load(); }catch(e){}
-      pool.push(a);
+function enableSound(){
+  // Use this exact Audio element for the confirmation tone and every game sound.
+  gameAudio.pause();
+  gameAudio.src="sfx/unlock.wav";
+  gameAudio.currentTime=0;
+  gameAudio.volume=.35;
+
+  try{
+    const p=gameAudio.play();
+    if(p && p.then){
+      p.then(()=>{
+        audioEnabled=true;
+        soundOnBtnEl.textContent="🔊 SOUND ON ✓";
+        soundOnBtnEl.classList.add("enabled");
+      }).catch(()=>{
+        audioEnabled=false;
+        soundOnBtnEl.textContent="🔇 TAP AGAIN";
+      });
+    }else{
+      audioEnabled=true;
+      soundOnBtnEl.textContent="🔊 SOUND ON ✓";
+      soundOnBtnEl.classList.add("enabled");
     }
-    sfxPools[name]={pool,index:0};
+  }catch(e){
+    audioEnabled=false;
+    soundOnBtnEl.textContent="🔇 TAP AGAIN";
   }
-}
-buildSfxPools();
-
-async function unlockAllAudio(){
-  const now=performance.now();
-  if(audioUnlocked || audioUnlocking || now-lastUnlockAttempt<400) return;
-  lastUnlockAttempt=now;
-  audioUnlocking=true;
-
-  const all=[];
-  for(const entry of Object.values(sfxPools)){
-    for(const a of entry.pool) all.push(a);
-  }
-
-  let okCount=0;
-  for(const a of all){
-    const originalVolume=a.volume;
-    try{
-      a.muted=true;
-      a.volume=0;
-      a.currentTime=0;
-      const p=a.play();
-      if(p && p.then) await p;
-      a.pause();
-      a.currentTime=0;
-      a.muted=false;
-      a.volume=originalVolume;
-      okCount++;
-    }catch(e){
-      try{
-        a.pause();
-        a.currentTime=0;
-        a.muted=false;
-        a.volume=originalVolume;
-      }catch(_){}
-    }
-  }
-
-  audioUnlocked=okCount>0;
-  audioUnlocking=false;
 }
 
 function sfx(name){
-  const entry=sfxPools[name];
-  if(!entry) return;
-
-  if(!audioUnlocked){
-    // Do not block the game. A later user touch will retry unlocking.
-    return;
-  }
+  if(!audioEnabled) return;
+  const src=SFX_FILES[name];
+  if(!src) return;
 
   const now=performance.now();
-  const gap={pass:70,shot:100,super:140,trap:110,dash:120,poke:100,goal:600,save:140}[name]||90;
+  const gap={pass:80,shot:120,super:150,trap:120,dash:130,poke:110,goal:650,save:150}[name]||100;
   if((sfxLastAt[name]||0)+gap>now) return;
   sfxLastAt[name]=now;
 
-  const a=entry.pool[entry.index];
-  entry.index=(entry.index+1)%entry.pool.length;
-
   try{
-    a.pause();
-    a.currentTime=0;
-    const p=a.play();
+    gameAudio.pause();
+    gameAudio.src=src;
+    gameAudio.currentTime=0;
+    gameAudio.volume=name==="goal"?.58:.48;
+    const p=gameAudio.play();
     if(p && p.catch){
       p.catch(()=>{
-        // Some mobile browsers can revoke playback after inactivity.
-        audioUnlocked=false;
+        audioEnabled=false;
+        soundOnBtnEl.textContent="🔇 SOUND OFF - TAP";
+        soundOnBtnEl.classList.remove("enabled");
       });
     }
   }catch(e){
-    audioUnlocked=false;
+    audioEnabled=false;
+    soundOnBtnEl.textContent="🔇 SOUND OFF - TAP";
+    soundOnBtnEl.classList.remove("enabled");
   }
 }
 
-// Retry the unlock from genuine user gestures if a browser ever revokes playback.
-document.addEventListener("pointerdown",unlockAllAudio,{passive:true});
-document.addEventListener("touchstart",unlockAllAudio,{passive:true});
-
-// When returning to the page, require one more touch if the browser suspended media.
-document.addEventListener("visibilitychange",()=>{
-  if(document.hidden) audioUnlocked=false;
+soundOnBtnEl.addEventListener("click",enableSound);
+soundOnBtnEl.addEventListener("pointerup",e=>{
+  if(e && e.preventDefault) e.preventDefault();
+  if(!audioEnabled) enableSound();
 });
 
 // ---------- Buttons ----------
