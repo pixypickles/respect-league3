@@ -45,6 +45,7 @@ const input = {
   passCallTimer: 0,
   actionPriorityTimer: 0,
   shootBallLock: false,
+  postShotNoTrap: 0,
   shootDown: false,
   shootStarted: 0
 };
@@ -419,7 +420,7 @@ function doPass(p, forcedTarget=null) {
 function playerShoot(p, chargeSec) {
   // Direct shot from a nearby loose ball is allowed without trapping first.
   if(ball.owner!==p) {
-    if(nearbyLooseBallFor(p,104)) {
+    if((!ball.owner && ball.z<42 && dist(p,ball)<128)) {
       const stickMag=Math.hypot(input.sx,input.sy);
       let dx=stickMag>.18?input.sx:p.dirX;
       let dy=stickMag>.18?input.sy:p.dirY;
@@ -441,6 +442,7 @@ function playerShoot(p, chargeSec) {
       ball.lastTouch=p; ball.passFrom=p; ball.passTarget=null;
       ball.shot=true; ball.power=speed;
       ball.touchGrace=.12; ball.protectedTeam=p.team;
+      input.postShotNoTrap=.22;
       p.kickAnim=.22; p.cooldown=.18;
       showMessage(label,.35);
       return;
@@ -462,6 +464,7 @@ function playerShoot(p, chargeSec) {
     speed=505; lift=26; label="SHOT";
   }
   kickBall(p,dx,dy,speed,lift,true,null);
+  input.postShotNoTrap=.22;
   showMessage(label,.35);
 }
 
@@ -488,11 +491,14 @@ function attemptTrap(p, dt) {
   const closing = speed>100;
 
   if(p.controlled) {
+    // Never immediately auto-trap the player's own shot right after release.
+    if(input.postShotNoTrap>0 && ball.lastTouch===p && !input.trap) return false;
+
     // Auto-control is only for genuinely slow, unclaimed loose balls.
     // It must never steal priority from PASS / SHOT input.
     const slowLoose = speed < 115 && ball.z < 14 && !ball.passTarget;
 
-    if(input.trap || (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown)) {
+    if(input.trap || (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postShotNoTrap<=0)) {
       ball.owner=p;
       ball.passTarget=null;
       ball.vx=ball.vy=ball.vz=0;
@@ -697,18 +703,6 @@ function updateControlled(p,dt) {
   // This makes charging a shot much less frame-perfect.
   if(input.shootDown && !input.shootBallLock && !ball.owner && nearbyLooseBallFor(p,102)) {
     input.shootBallLock=true;
-  }
-
-  if(input.shootDown && input.shootBallLock && !ball.owner && nearbyLooseBallFor(p,92) && ball.z<32) {
-    const speed=Math.hypot(ball.vx,ball.vy);
-    if(speed<220){
-      ball.owner=p;
-      ball.passTarget=null;
-      ball.vx=ball.vy=ball.vz=0;
-      ball.z=0;
-      p.possessionTime=0;
-      p.autoControlTimer=.16;
-    }
   }
 
   if(ball.owner===p) {
@@ -1010,6 +1004,7 @@ function updateGK(p,dt) {
 
 function updatePhysics(dt) {
   input.actionPriorityTimer=Math.max(0,input.actionPriorityTimer-dt);
+  input.postShotNoTrap=Math.max(0,input.postShotNoTrap-dt);
   ball.touchGrace=Math.max(0,ball.touchGrace-dt);
   ball.cpuPassProtect=Math.max(0,ball.cpuPassProtect-dt);
   if(ball.touchGrace<=0) ball.protectedTeam=null;
@@ -1413,15 +1408,6 @@ shootBtn.addEventListener("pointerdown",e=>{
   // cannot turn a charged shot into a defensive slide.
   input.shootBallLock = (ball.owner===c || nearbyLooseBallFor(c,104));
 
-  if(!ball.owner && input.shootBallLock && nearbyLooseBallFor(c,96) && Math.hypot(ball.vx,ball.vy)<190){
-    ball.owner=c;
-    ball.passTarget=null;
-    ball.vx=ball.vy=ball.vz=0;
-    ball.z=0;
-    c.possessionTime=0;
-    c.autoControlTimer=.12;
-  }
-
   shootBtn.classList.add("active");
 });
 function releaseShoot() {
@@ -1430,8 +1416,14 @@ function releaseShoot() {
   const held=(performance.now()-input.shootStarted)/1000;
   const c=controlled();
 
-  if(ball.owner===c || nearbyLooseBallFor(c,104) || input.shootBallLock) {
+  if(ball.owner===c || nearbyLooseBallFor(c,112)) {
     playerShoot(c,held);
+    input.postShotNoTrap=.22;
+  } else if(input.shootBallLock && !ball.owner && dist(c,ball)<128 && ball.z<42) {
+    // Small release grace: the ball may have rolled a little during charge,
+    // but it is still kicked directly instead of being trapped.
+    playerShoot(c,held);
+    input.postShotNoTrap=.22;
   } else {
     offBallAction("blue","shoulder");
   }
