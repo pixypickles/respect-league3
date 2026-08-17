@@ -61,7 +61,11 @@ function makePlayer(team, x,y, role="field", controlled=false) {
     cooldown:0,
     possessionTime:0,
     pressureTime:0,
-    receiveLock:0
+    receiveLock:0,
+    autoControlTimer:0,
+    afterPassRunTimer:0,
+    afterPassX:x,
+    afterPassY:y
   };
 }
 
@@ -298,14 +302,21 @@ function kickNearbyLooseBall(p, kind="pass") {
     ball.owner=null;
     ball.touchGrace=.12;
     ball.protectedTeam=p.team;
-    ball.vx=n.x*420;
-    ball.vy=n.y*420;
+    ball.vx=n.x*380;
+    ball.vy=n.y*380;
     ball.vz=24;
     ball.shot=false;
-    ball.power=420;
+    ball.power=380;
 
     p.kickAnim=.18;
     p.cooldown=.16;
+
+    if(!p.controlled){
+      const attack=p.team==="blue"?1:-1;
+      p.afterPassRunTimer=.95;
+      p.afterPassX=clamp(p.x+attack*135,COURT.x+70,COURT.x+COURT.w-70);
+      p.afterPassY=clamp(p.y+(Math.sign(p.y-H/2)||1)*65,COURT.y+60,COURT.y+COURT.h-60);
+    }
     return true;
   }
 
@@ -381,8 +392,18 @@ function doPass(p, forcedTarget=null) {
   }
 
   const d=dist(p,target);
-  const cpuSpeed=!p.controlled ? clamp(430+d*.22,455,555) : 420;
-  kickBall(p,tx-p.x,ty-p.y,cpuSpeed,30,false,target);
+  const cpuSpeed=!p.controlled ? clamp(375+d*.15,400,475) : 385;
+  kickBall(p,tx-p.x,ty-p.y,cpuSpeed,26,false,target);
+
+  // After passing, the passer tries to run into the next forward space.
+  // Controlled player is still manually controlled, so this is mainly for CPU.
+  if(!p.controlled){
+    const attack=p.team==="blue"?1:-1;
+    p.afterPassRunTimer=1.05;
+    p.afterPassX=clamp(p.x+attack*150,COURT.x+70,COURT.x+COURT.w-70);
+    const side = Math.sign(p.y-H/2) || (Math.random()<.5?-1:1);
+    p.afterPassY=clamp(p.y+side*75,COURT.y+60,COURT.y+COURT.h-60);
+  }
 
   if(!p.controlled){
     // A real pass should travel cleanly for a brief moment instead of being
@@ -462,18 +483,30 @@ function attemptTrap(p, dt) {
   const speed=Math.hypot(ball.vx,ball.vy);
   const closing = speed>100;
 
-  if(input.trap && p.controlled) {
-    ball.owner=p;
-    ball.passTarget=null;
-    ball.vx=ball.vy=ball.vz=0;
-    ball.z=0;
-    ball.lastTouch=p;
-    ball.touchGrace=.18;
-    ball.protectedTeam=p.team;
-    p.possessionTime=0;
-    p.kickAnim=.16;
-    showMessage(speed>500?"SUPER TRAP!":"TRAP!",.38);
-    return true;
+  if(p.controlled) {
+    const slowLoose = speed < 165 && ball.z < 18;
+
+    // Slow balls / loose balls are controlled automatically.
+    // Faster passes and shots still require the TRAP timing mechanic.
+    if(input.trap || slowLoose) {
+      ball.owner=p;
+      ball.passTarget=null;
+      ball.vx=ball.vy=ball.vz=0;
+      ball.z=0;
+      ball.lastTouch=p;
+      ball.touchGrace=.18;
+      ball.protectedTeam=p.team;
+      p.possessionTime=0;
+      p.kickAnim=.16;
+
+      if(slowLoose && !input.trap){
+        p.autoControlTimer=.34;
+        showMessage("AUTO TRAP",.28);
+      } else {
+        showMessage(speed>500?"SUPER TRAP!":"TRAP!",.38);
+      }
+      return true;
+    }
   }
 
   if(!p.controlled) {
@@ -502,8 +535,8 @@ function attemptTrap(p, dt) {
       ball.protectedTeam=p.team;
       p.possessionTime=0;
       p.receiveIntent=false;
-      p.receiveLock = p.team==="red" ? .48 : .22;
-      p.aiTimer = p.team==="red" ? .50 : .22;
+      p.receiveLock = p.team==="red" ? .72 : .22;
+      p.aiTimer = p.team==="red" ? .78 : .22;
       return true;
     }
   }
@@ -598,7 +631,7 @@ function updateControlled(p,dt) {
   if(ball.owner===p) {
     p.possessionTime+=dt;
     // Core mechanic: holding trap is required to keep dribbling.
-    if(input.trap) {
+    if(input.trap || p.autoControlTimer>0) {
       const n=norm(p.dirX,p.dirY);
       ball.x=p.x+n.x*31; ball.y=p.y+n.y*31; ball.z=0;
       ball.vx=p.vx; ball.vy=p.vy;
@@ -624,6 +657,12 @@ function aiMoveOffBall(p,dt) {
   const idx=squad.indexOf(p);
   let tx=p.x,ty=p.y;
 
+  // Give-and-go movement: after passing, attack the forward space for about one second.
+  if(p.afterPassRunTimer>0){
+    tx=p.afterPassX;
+    ty=p.afterPassY;
+  }
+
   const keepAwayFromBall=(x,y,minR)=>{
     const dx=x-ball.x, dy=y-ball.y;
     const d=Math.hypot(dx,dy);
@@ -638,7 +677,9 @@ function aiMoveOffBall(p,dt) {
     };
   };
 
-  if(ball.owner && ball.owner.team===p.team) {
+  if(p.afterPassRunTimer>0) {
+    // Keep the run target chosen above.
+  } else if(ball.owner && ball.owner.team===p.team) {
     const o=ball.owner;
 
     // Attack shape: most teammates should offer ahead of the ball,
@@ -728,7 +769,7 @@ function aiWithBall(p,dt) {
     const target=safeCpuPassTarget(p);
 
     // Enemy CPU deliberately takes an extra touch before releasing under pressure.
-    const canRelease = p.team==="red" ? p.possessionTime>.42 : p.possessionTime>.18;
+    const canRelease = p.team==="red" ? p.possessionTime>.72 : p.possessionTime>.18;
 
     if(target && canRelease) {
       doPass(p,target);
@@ -742,7 +783,7 @@ function aiWithBall(p,dt) {
 
   // CPU prefers passing. Dribble only when clearly unpressured.
   if(p.aiTimer<=0 && p.receiveLock<=0) {
-    p.aiTimer = p.team==="red" ? rand(.48,.72) : rand(.28,.42);
+    p.aiTimer = p.team==="red" ? rand(.72,1.15) : rand(.28,.42);
 
     if(goalDist<260 && Math.abs(p.y-goalY)<180 && near.d>90) {
       const aimY=goalY+rand(-75,75);
@@ -751,8 +792,8 @@ function aiWithBall(p,dt) {
     }
 
     let target=safeCpuPassTarget(p);
-    const passChance = p.team==="red" ? .52 : .72;
-    const pressureRange = p.team==="red" ? 145 : 190;
+    const passChance = p.team==="red" ? .34 : .72;
+    const pressureRange = p.team==="red" ? 118 : 190;
     if(target && (near.d<pressureRange || Math.random()<passChance)) {
       doPass(p,target);
       return;
@@ -760,18 +801,37 @@ function aiWithBall(p,dt) {
   }
 
   let dx=0,dy=0;
-  if(near.d>230) {
-    dx=attack;
-    dy=clamp((goalY-p.y)/210,-.55,.55);
+
+  if(p.team==="red"){
+    // Enemy CPU can now keep possession, scan, and occasionally carry the ball.
+    if(near.d>250){
+      // Plenty of room: dribble forward, but not at full speed.
+      dx=attack*.72;
+      dy=clamp((goalY-p.y)/260,-.42,.42);
+    } else if(near.d>135){
+      // Medium pressure: slow down and look around instead of instantly passing.
+      const holdPhase=Math.sin(p.possessionTime*3.2);
+      dx=attack*.18;
+      dy=holdPhase*.38;
+    } else {
+      // Close pressure: shield sideways and buy time for a passing lane.
+      dx=-attack*.05;
+      dy=near.p ? Math.sign(p.y-near.p.y || 1)*.78 : .55;
+    }
   } else {
-    // Shield sideways and create a passing lane; avoid standing chest-to-chest.
-    dx=-attack*.08;
-    dy=near.p ? Math.sign(p.y-near.p.y || 1) : 1;
+    if(near.d>230) {
+      dx=attack;
+      dy=clamp((goalY-p.y)/210,-.55,.55);
+    } else {
+      dx=-attack*.08;
+      dy=near.p ? Math.sign(p.y-near.p.y || 1) : 1;
+    }
   }
   const n=norm(dx,dy);
   p.dirX=n.x;p.dirY=n.y;
-  p.vx=lerp(p.vx,n.x*p.speed*.72,dt*4);
-  p.vy=lerp(p.vy,n.y*p.speed*.72,dt*4);
+  const carrySpeed = p.team==="red" ? .58 : .72;
+  p.vx=lerp(p.vx,n.x*p.speed*carrySpeed,dt*4);
+  p.vy=lerp(p.vy,n.y*p.speed*carrySpeed,dt*4);
   ball.x=p.x+n.x*31;ball.y=p.y+n.y*31;ball.z=0;ball.vx=p.vx;ball.vy=p.vy;
 }
 
@@ -868,6 +928,8 @@ function updatePhysics(dt) {
   for(const p of [...teams.blue,...teams.red]) {
     p.cooldown=Math.max(0,p.cooldown-dt);
     p.receiveLock=Math.max(0,p.receiveLock-dt);
+    p.autoControlTimer=Math.max(0,p.autoControlTimer-dt);
+    p.afterPassRunTimer=Math.max(0,p.afterPassRunTimer-dt);
     p.kickAnim=Math.max(0,p.kickAnim-dt);
     p.slide=Math.max(0,p.slide-dt);
 
@@ -962,7 +1024,7 @@ function updatePhysics(dt) {
     const targetX=clamp(c.x+dx*lead,COURT.x+45,COURT.x+COURT.w-45);
     const targetY=clamp(c.y+dy*lead,COURT.y+45,COURT.y+COURT.h-45);
     receiver.receiveIntent=false;
-    kickBall(receiver,targetX-receiver.x,targetY-receiver.y,465,26,false,c);
+    kickBall(receiver,targetX-receiver.x,targetY-receiver.y,420,24,false,c);
     ball.returnRequested=false;
     showMessage("RETURN!",.4);
   }
