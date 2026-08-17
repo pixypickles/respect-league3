@@ -325,3 +325,11 @@ GitHub Pagesへそのまま配置して遊べます。
   - `SOUND ON ✓` = 有効
   - `TAP TO ENABLE` = ブラウザに拒否されたので再タップ可能
 - ゲームのルール/AI/操作には変更なし
+
+## v33 SOUND ONを最小構成へ変更
+- `<audio>` 要素をHTMLへ最初から配置
+- SOUND ONは通常の `click` イベント1個だけ
+- 有効化時は `play()` 直前に `load()` / `pause()` / `src変更` を一切行わない
+- `pointerdown` / `pointerup` / `touchstart` の音声アンロック処理を廃止
+- 確認音が成功した場合だけ `SOUND ON ✓`
+- ゲーム中に個別効果音が1回失敗してもSOUND OFFへ勝手に戻さない
