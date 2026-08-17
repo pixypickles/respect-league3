@@ -235,6 +235,65 @@ function bestPassTarget(p, inputDir=null) {
   return best;
 }
 
+
+function nearbyLooseBallFor(p, radius=58) {
+  return !ball.owner && ball.z<28 && dist(p,ball)<=radius;
+}
+
+function kickNearbyLooseBall(p, kind="pass") {
+  if(!nearbyLooseBallFor(p,64)) return false;
+
+  const stickMag = p.controlled ? Math.hypot(input.sx,input.sy) : 0;
+  let dx = stickMag>.18 ? input.sx : p.dirX;
+  let dy = stickMag>.18 ? input.sy : p.dirY;
+  if(Math.hypot(dx,dy)<.1){ dx=p.team==="blue"?1:-1; dy=0; }
+
+  // Make contact from the actual ball position rather than requiring ownership/trap.
+  p.x = clamp(p.x,COURT.x+25,COURT.x+COURT.w-25);
+  p.y = clamp(p.y,COURT.y+25,COURT.y+COURT.h-25);
+
+  ball.lastTouch=p;
+  ball.passFrom=p;
+  ball.passTarget=null;
+  ball.owner=null;
+  ball.touchGrace=.12;
+  ball.protectedTeam=p.team;
+  p.kickAnim=.18;
+  p.cooldown=.16;
+
+  if(kind==="pass") {
+    let target = p.controlled ? bestPassTarget(p, stickMag>.18?{x:input.sx,y:input.sy}:null) : safeCpuPassTarget(p);
+    if(target) {
+      target.receiveIntent=true;
+      const tx=target.x+target.dirX*45;
+      const ty=target.y+target.dirY*45;
+      const n=norm(tx-ball.x,ty-ball.y);
+      ball.vx=n.x*430;
+      ball.vy=n.y*430;
+      ball.vz=26;
+      ball.passTarget=target;
+    } else {
+      const n=norm(dx,dy);
+      ball.vx=n.x*390; ball.vy=n.y*390; ball.vz=22;
+    }
+    ball.shot=false;
+    ball.power=430;
+    return true;
+  }
+
+  if(kind==="shot") {
+    const n=norm(dx,dy);
+    ball.vx=n.x*520;
+    ball.vy=n.y*520;
+    ball.vz=28;
+    ball.shot=true;
+    ball.power=520;
+    return true;
+  }
+
+  return false;
+}
+
 function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
   const n=norm(dx,dy);
   ball.owner=null;
@@ -294,7 +353,36 @@ function doPass(p, forcedTarget=null) {
   }
 }
 function playerShoot(p, chargeSec) {
-  if(ball.owner!==p) return;
+  // Direct shot from a nearby loose ball is allowed without trapping first.
+  if(ball.owner!==p) {
+    if(nearbyLooseBallFor(p,64)) {
+      const stickMag=Math.hypot(input.sx,input.sy);
+      let dx=stickMag>.18?input.sx:p.dirX;
+      let dy=stickMag>.18?input.sy:p.dirY;
+      if(Math.hypot(dx,dy)<.1){dx=p.team==="blue"?1:-1;dy=0;}
+
+      let speed,lift,label;
+      if(chargeSec < .095) {
+        speed=365; lift=165; label="LOOP";
+      } else if(chargeSec > .34) {
+        const t=clamp((chargeSec-.34)/.45,0,1);
+        speed=610+120*t; lift=42; label="POWER";
+      } else {
+        speed=505; lift=26; label="SHOT";
+      }
+
+      const n=norm(dx,dy);
+      ball.owner=null;
+      ball.vx=n.x*speed; ball.vy=n.y*speed; ball.vz=lift;
+      ball.lastTouch=p; ball.passFrom=p; ball.passTarget=null;
+      ball.shot=true; ball.power=speed;
+      ball.touchGrace=.12; ball.protectedTeam=p.team;
+      p.kickAnim=.22; p.cooldown=.18;
+      showMessage(label,.35);
+      return;
+    }
+    return;
+  }
   const stickMag=Math.hypot(input.sx,input.sy);
   let dx = stickMag>.18?input.sx:p.dirX;
   let dy = stickMag>.18?input.sy:p.dirY;
@@ -514,18 +602,28 @@ function aiMoveOffBall(p,dt) {
   if(ball.owner && ball.owner.team===p.team) {
     const o=ball.owner;
 
-    // Fixed passing lanes around the owner. Do not collapse onto the ball carrier.
-    const lanes=[-180,180,-75,80];
-    const depths=[120,120,235,-165];
-    tx=clamp(o.x+attack*depths[idx%4],COURT.x+90,COURT.x+COURT.w-90);
-    ty=clamp(H/2+lanes[idx%4],COURT.y+65,COURT.y+COURT.h-65);
+    // Attack shape: most teammates should offer ahead of the ball,
+    // but in different vertical lanes so they don't bunch together.
+    const laneY=[185,535,300,430];
+    const advance=[185,155,245,105];
+    const supportBack=[-95,-120,-80,-150];
+
+    const aheadCount = squad.filter(q=>q!==o && (q.x-o.x)*attack>35).length;
+    const shouldGoAhead = idx<3 || aheadCount<2;
+
+    if(shouldGoAhead) {
+      tx=clamp(o.x+attack*advance[idx%4],COURT.x+85,COURT.x+COURT.w-85);
+      ty=laneY[idx%4];
+    } else {
+      tx=clamp(o.x+attack*supportBack[idx%4],COURT.x+85,COURT.x+COURT.w-85);
+      ty=laneY[idx%4];
+    }
 
     if(ball.passTarget===p || p.receiveIntent) {
-      // Receiver attacks the lane but does not run into the current owner.
-      tx=clamp(p.x+attack*90,COURT.x+80,COURT.x+COURT.w-80);
-      ty=clamp(p.y+p.dirY*55,COURT.y+60,COURT.y+COURT.h-60);
+      tx=clamp(p.x+attack*105,COURT.x+80,COURT.x+COURT.w-80);
+      ty=clamp(p.y+p.dirY*45,COURT.y+60,COURT.y+COURT.h-60);
     } else {
-      const k=keepAwayFromBall(tx,ty,105);
+      const k=keepAwayFromBall(tx,ty,92);
       tx=k.x;ty=k.y;
     }
 
@@ -559,7 +657,7 @@ function aiMoveOffBall(p,dt) {
     } else {
       tx=p.team==="blue"?430:850;
       ty=[190,360,530,285][idx%4];
-      const k=keepAwayFromBall(tx,ty,140);
+      const k=keepAwayFromBall(tx,ty,95);
       tx=k.x;ty=k.y;
     }
   }
@@ -636,6 +734,19 @@ function updateAI(p,dt) {
   if(p.role==="gk") return;
   if(p.controlled){updateControlled(p,dt);return;}
   if(p.slide>0)return;
+
+  if(!ball.owner && nearbyLooseBallFor(p,58)) {
+    const squad=teamPlayers(p.team).filter(q=>q.role!=="gk" && !q.controlled);
+    const nearest=squad.slice().sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
+    if(nearest===p && ball.touchGrace<=0) {
+      const target=safeCpuPassTarget(p);
+      if(target) {
+        kickNearbyLooseBall(p,"pass");
+        return;
+      }
+    }
+  }
+
   if(ball.owner===p) aiWithBall(p,dt);
   else aiMoveOffBall(p,dt);
 
@@ -752,7 +863,7 @@ function updatePhysics(dt) {
 
     if(!allowedNear) {
       const d=dist(p,ball);
-      const minD=105;
+      const minD=80;
       if(d<minD && d>0) {
         const n=norm(p.x-ball.x,p.y-ball.y);
         const push=(minD-d)*.55;
@@ -1036,6 +1147,13 @@ passBtn.addEventListener("pointerdown",e=>{
     return;
   }
 
+  // Directly kick a nearby loose ball without needing TRAP first.
+  if(nearbyLooseBallFor(c,64)) {
+    kickNearbyLooseBall(c,"pass");
+    showMessage("DIRECT PASS",.28);
+    return;
+  }
+
   // If our pass is still travelling to a teammate, this means one-two / return request.
   if(!ball.owner && ball.passFrom===c && ball.passTarget && ball.passTarget.team==="blue") {
     ball.returnRequested=true;
@@ -1043,8 +1161,6 @@ passBtn.addEventListener("pointerdown",e=>{
     return;
   }
 
-  // Whenever our team has the ball, or the ball was most recently played by blue,
-  // remember the request instead of requiring a perfect single-frame press.
   if((ball.owner && ball.owner.team==="blue") ||
      (!ball.owner && ball.lastTouch && ball.lastTouch.team==="blue")) {
     requestPassToControlled();
@@ -1066,7 +1182,7 @@ function releaseShoot() {
   input.shootDown=false;shootBtn.classList.remove("active");
   const held=(performance.now()-input.shootStarted)/1000;
   const c=controlled();
-  if(ball.owner===c) playerShoot(c,held);
+  if(ball.owner===c || nearbyLooseBallFor(c,64)) playerShoot(c,held);
   else offBallAction("blue","slide");
 }
 shootBtn.addEventListener("pointerup",releaseShoot);
