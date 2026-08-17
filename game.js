@@ -43,6 +43,8 @@ const input = {
   dashTimer: 0,
   dashCooldown: 0,
   passCallTimer: 0,
+  actionPriorityTimer: 0,
+  shootBallLock: false,
   shootDown: false,
   shootStarted: 0
 };
@@ -240,7 +242,7 @@ function bestPassTarget(p, inputDir=null) {
 }
 
 
-function nearbyLooseBallFor(p, radius=76) {
+function nearbyLooseBallFor(p, radius=84) {
   return !ball.owner && ball.z<34 && dist(p,ball)<=radius;
 }
 
@@ -484,11 +486,11 @@ function attemptTrap(p, dt) {
   const closing = speed>100;
 
   if(p.controlled) {
-    const slowLoose = speed < 165 && ball.z < 18;
+    // Auto-control is only for genuinely slow, unclaimed loose balls.
+    // It must never steal priority from PASS / SHOT input.
+    const slowLoose = speed < 115 && ball.z < 14 && !ball.passTarget;
 
-    // Slow balls / loose balls are controlled automatically.
-    // Faster passes and shots still require the TRAP timing mechanic.
-    if(input.trap || slowLoose) {
+    if(input.trap || (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown)) {
       ball.owner=p;
       ball.passTarget=null;
       ball.vx=ball.vy=ball.vz=0;
@@ -500,8 +502,9 @@ function attemptTrap(p, dt) {
       p.kickAnim=.16;
 
       if(slowLoose && !input.trap){
-        p.autoControlTimer=.34;
-        showMessage("AUTO TRAP",.28);
+        // Brief settle only. The player can immediately PASS or SHOT.
+        p.autoControlTimer=.18;
+        showMessage("AUTO TRAP",.22);
       } else {
         showMessage(speed>500?"SUPER TRAP!":"TRAP!",.38);
       }
@@ -631,7 +634,7 @@ function updateControlled(p,dt) {
   if(ball.owner===p) {
     p.possessionTime+=dt;
     // Core mechanic: holding trap is required to keep dribbling.
-    if(input.trap || p.autoControlTimer>0) {
+    if(input.trap || p.autoControlTimer>0 || (input.shootDown && input.shootBallLock)) {
       const n=norm(p.dirX,p.dirY);
       ball.x=p.x+n.x*31; ball.y=p.y+n.y*31; ball.z=0;
       ball.vx=p.vx; ball.vy=p.vy;
@@ -921,6 +924,7 @@ function updateGK(p,dt) {
 }
 
 function updatePhysics(dt) {
+  input.actionPriorityTimer=Math.max(0,input.actionPriorityTimer-dt);
   ball.touchGrace=Math.max(0,ball.touchGrace-dt);
   ball.cpuPassProtect=Math.max(0,ball.cpuPassProtect-dt);
   if(ball.touchGrace<=0) ball.protectedTeam=null;
@@ -1247,6 +1251,7 @@ dashBtn.addEventListener("pointerdown",e=>{
 
 passBtn.addEventListener("pointerdown",e=>{
   e.preventDefault();
+  input.actionPriorityTimer=.16;
   const c=controlled();
 
   if(ball.owner===c) {
@@ -1281,8 +1286,24 @@ passBtn.addEventListener("pointerup",()=>{});
 
 shootBtn.addEventListener("pointerdown",e=>{
   e.preventDefault();
+  const c=controlled();
+  input.actionPriorityTimer=.18;
   input.shootDown=true;
   input.shootStarted=performance.now();
+
+  // Lock an owned or nearby slow ball to the shot action so auto-control expiry
+  // cannot turn a charged shot into a defensive slide.
+  input.shootBallLock = (ball.owner===c || nearbyLooseBallFor(c,86));
+
+  if(!ball.owner && input.shootBallLock && nearbyLooseBallFor(c,86) && Math.hypot(ball.vx,ball.vy)<135){
+    ball.owner=c;
+    ball.passTarget=null;
+    ball.vx=ball.vy=ball.vz=0;
+    ball.z=0;
+    c.possessionTime=0;
+    c.autoControlTimer=.12;
+  }
+
   shootBtn.classList.add("active");
 });
 function releaseShoot() {
@@ -1290,8 +1311,14 @@ function releaseShoot() {
   input.shootDown=false;shootBtn.classList.remove("active");
   const held=(performance.now()-input.shootStarted)/1000;
   const c=controlled();
-  if(ball.owner===c || nearbyLooseBallFor(c,82)) playerShoot(c,held);
-  else offBallAction("blue","slide");
+
+  if(ball.owner===c || nearbyLooseBallFor(c,86) || input.shootBallLock) {
+    playerShoot(c,held);
+  } else {
+    offBallAction("blue","slide");
+  }
+
+  input.shootBallLock=false;
 }
 shootBtn.addEventListener("pointerup",releaseShoot);
 shootBtn.addEventListener("pointercancel",releaseShoot);
