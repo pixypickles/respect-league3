@@ -367,9 +367,9 @@ GitHub Pagesへそのまま配置して遊べます。
 - ゲームの操作・AI・ワンツー・DASH技などは維持
 - 1秒フリーズが消えるか確認するための診断版
 
-## v43 DEBUG
-- v42を土台に、ゲーム内容は変更せず診断表示だけ追加
-- 左下にフレーム数・経過時間・gamePhase・ボール所有状態を表示
-- JavaScriptエラーが発生すると赤い枠でスタックトレースを画面表示
-- window error / unhandledrejection / ゲームループ例外を捕捉
-- 音声は引き続き完全無効
+## v44 DEBUG
+- v43で診断文字が見えていなかったため、診断表示をゲームDOM外・画面左上固定に変更
+- 0.5秒ごとに `v44 LIVE | FPS xx | frames xx` を更新
+- requestAnimationFrameが止まればFPSが0になる
+- JavaScript例外は赤背景で表示
+- 音声は完全無効のまま

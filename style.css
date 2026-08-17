@@ -477,25 +477,11 @@ body.practice-open #clock {
   touch-action: none !important;
 }
 
-#debugStatus {
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  z-index: 9999;
-  max-width: 78vw;
-  max-height: 34vh;
-  overflow: auto;
-  padding: 6px 8px;
-  border-radius: 8px;
-  background: rgba(0,0,0,.72);
-  color: #8cff8c;
-  font: 700 11px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  white-space: pre-wrap;
-  pointer-events: none;
+#debugStatusV44{
+ position:fixed;left:6px;top:6px;z-index:2147483647;
+ max-width:72vw;padding:5px 7px;border-radius:6px;
+ background:rgba(0,0,0,.72);color:#9cff9c;
+ font:700 10px/1.25 monospace;white-space:pre-wrap;
+ pointer-events:none;
 }
-#debugStatus.error {
-  color: #fff;
-  background: rgba(160,0,0,.92);
-  border: 2px solid rgba(255,255,255,.8);
-  font-size: 12px;
-}
+#debugStatusV44.err{background:rgba(170,0,0,.94);color:white;font-size:11px;}
