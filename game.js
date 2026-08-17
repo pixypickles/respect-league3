@@ -45,7 +45,7 @@ const input = {
   passCallTimer: 0,
   actionPriorityTimer: 0,
   shootBallLock: false,
-  postShotNoTrap: 0,
+  postKickNoAutoTrap: 0,
   shootDown: false,
   shootStarted: 0
 };
@@ -70,7 +70,9 @@ function makePlayer(team, x,y, role="field", controlled=false) {
     afterPassX:x,
     afterPassY:y,
     shoulder:0,
-    stagger:0
+    stagger:0,
+    scanTimer:0,
+    headLook:0
   };
 }
 
@@ -313,6 +315,7 @@ function kickNearbyLooseBall(p, kind="pass") {
     ball.shot=false;
     ball.power=380;
 
+    if(p.controlled) input.postKickNoAutoTrap=.50;
     p.kickAnim=.18;
     p.cooldown=.16;
 
@@ -340,6 +343,7 @@ function kickNearbyLooseBall(p, kind="pass") {
     ball.shot=true;
     ball.power=520;
 
+    if(p.controlled) input.postKickNoAutoTrap=.50;
     p.kickAnim=.18;
     p.cooldown=.16;
     return true;
@@ -365,6 +369,11 @@ function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
   ball.power=speed;
   ball.touchGrace=.12;
   ball.protectedTeam=p.team;
+
+  // After PASS / SHOT, auto trap is disabled for 0.5s.
+  // Manual TRAP timing still works.
+  if(p.controlled) input.postKickNoAutoTrap=.50;
+
   p.kickAnim=.22;
   p.cooldown=.18;
 }
@@ -442,7 +451,7 @@ function playerShoot(p, chargeSec) {
       ball.lastTouch=p; ball.passFrom=p; ball.passTarget=null;
       ball.shot=true; ball.power=speed;
       ball.touchGrace=.12; ball.protectedTeam=p.team;
-      input.postShotNoTrap=.22;
+      input.postKickNoAutoTrap=.50;
       p.kickAnim=.22; p.cooldown=.18;
       showMessage(label,.35);
       return;
@@ -464,7 +473,7 @@ function playerShoot(p, chargeSec) {
     speed=505; lift=26; label="SHOT";
   }
   kickBall(p,dx,dy,speed,lift,true,null);
-  input.postShotNoTrap=.22;
+  input.postKickNoAutoTrap=.50;
   showMessage(label,.35);
 }
 
@@ -492,13 +501,13 @@ function attemptTrap(p, dt) {
 
   if(p.controlled) {
     // Never immediately auto-trap the player's own shot right after release.
-    if(input.postShotNoTrap>0 && ball.lastTouch===p && !input.trap) return false;
+    if(input.postKickNoAutoTrap>0 && ball.lastTouch===p && !input.trap) return false;
 
     // Auto-control is only for genuinely slow, unclaimed loose balls.
     // It must never steal priority from PASS / SHOT input.
     const slowLoose = speed < 115 && ball.z < 14 && !ball.passTarget;
 
-    if(input.trap || (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postShotNoTrap<=0)) {
+    if(input.trap || (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
       ball.owner=p;
       ball.passTarget=null;
       ball.vx=ball.vy=ball.vz=0;
@@ -546,8 +555,9 @@ function attemptTrap(p, dt) {
       ball.protectedTeam=p.team;
       p.possessionTime=0;
       p.receiveIntent=false;
-      p.receiveLock = p.team==="red" ? .72 : .22;
-      p.aiTimer = p.team==="red" ? .78 : .22;
+      p.receiveLock = p.team==="red" ? .88 : .38;
+      p.aiTimer = p.team==="red" ? .95 : .48;
+      p.scanTimer = p.team==="red" ? .62 : .42;
       return true;
     }
   }
@@ -561,6 +571,52 @@ function attemptTrap(p, dt) {
   }
   return false;
 }
+
+function shortTrapSteal(actor) {
+  if(!actor || actor.role==="gk" || actor.cooldown>0 || actor.stagger>0) return false;
+
+  const enemyOwner = ball.owner && ball.owner.team!==actor.team ? ball.owner : null;
+
+  // Shorter reach than PASS poke / SHOULDER.
+  if(enemyOwner && dist(actor,enemyOwner)<42) {
+    const face=norm(actor.dirX,actor.dirY);
+    const to=norm(enemyOwner.x-actor.x,enemyOwner.y-actor.y);
+    const alignment=face.x*to.x+face.y*to.y;
+    if(alignment<-.15) return false;
+
+    ball.owner=null;
+    ball.passTarget=null;
+    ball.x=enemyOwner.x-face.x*10;
+    ball.y=enemyOwner.y-face.y*10;
+    ball.z=4;
+    ball.vx=face.x*110;
+    ball.vy=face.y*110;
+    ball.vz=18;
+    ball.lastTouch=actor;
+    ball.touchGrace=.12;
+    ball.protectedTeam=actor.team;
+
+    actor.kickAnim=.14;
+    actor.cooldown=.28;
+    showMessage("STEAL!",.25);
+    return true;
+  }
+
+  // Can also stab at a very nearby loose ball.
+  if(!ball.owner && dist(actor,ball)<38 && ball.z<18){
+    const face=norm(actor.dirX,actor.dirY);
+    ball.vx=face.x*120;
+    ball.vy=face.y*120;
+    ball.vz=12;
+    ball.lastTouch=actor;
+    actor.kickAnim=.12;
+    actor.cooldown=.24;
+    return true;
+  }
+
+  return false;
+}
+
 function defensivePoke(actor) {
   if(ball.owner && ball.owner.team!==actor.team && dist(actor,ball.owner)<58) {
     const e=ball.owner;
@@ -831,8 +887,16 @@ function aiWithBall(p,dt) {
   p.possessionTime+=dt;
   p.aiTimer-=dt;
 
+  // CPU scans before releasing the ball. This reduces constant one-touch passing.
+  if(p.scanTimer>0){
+    p.scanTimer-=dt;
+    p.headLook=Math.sin((1-p.scanTimer)*12);
+  } else {
+    p.headLook*=Math.pow(.06,dt);
+  }
+
   // Player pass-call has top priority for a short window.
-  if(p.team==="blue" && !p.controlled && input.passCallTimer>0 && p.cooldown<=.12) {
+  if(p.team==="blue" && !p.controlled && input.passCallTimer>0 && p.cooldown<=.12 && p.possessionTime>.28) {
     doPass(p,controlled());
     input.passCallTimer=0;
     return;
@@ -846,7 +910,7 @@ function aiWithBall(p,dt) {
     const target=safeCpuPassTarget(p);
 
     // Enemy CPU deliberately takes an extra touch before releasing under pressure.
-    const canRelease = p.team==="red" ? p.possessionTime>.72 : p.possessionTime>.18;
+    const canRelease = p.team==="red" ? p.possessionTime>.95 : p.possessionTime>.45;
 
     if(target && canRelease) {
       doPass(p,target);
@@ -859,8 +923,8 @@ function aiWithBall(p,dt) {
   const goalDist=Math.hypot(goalX-p.x,goalY-p.y);
 
   // CPU prefers passing. Dribble only when clearly unpressured.
-  if(p.aiTimer<=0 && p.receiveLock<=0) {
-    p.aiTimer = p.team==="red" ? rand(.72,1.15) : rand(.28,.42);
+  if(p.aiTimer<=0 && p.receiveLock<=0 && p.possessionTime>(p.team==="red"?.85:.42)) {
+    p.aiTimer = p.team==="red" ? rand(.90,1.35) : rand(.48,.72);
 
     if(goalDist<260 && Math.abs(p.y-goalY)<180 && near.d>90) {
       const aimY=goalY+rand(-75,75);
@@ -926,10 +990,29 @@ function updateAI(p,dt) {
     const squad=teamPlayers(p.team).filter(q=>q.role!=="gk" && !q.controlled);
     const nearest=squad.slice().sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
     if(nearest===p && ball.touchGrace<=0) {
-      const target=safeCpuPassTarget(p);
-      if(target) {
-        kickNearbyLooseBall(p,"pass");
+      const speed=Math.hypot(ball.vx,ball.vy);
+
+      // Slow loose balls are controlled first instead of constantly played first-time.
+      if(speed<150 && ball.z<18){
+        ball.owner=p;
+        ball.passTarget=null;
+        ball.vx=ball.vy=ball.vz=0;
+        ball.z=0;
+        ball.lastTouch=p;
+        p.possessionTime=0;
+        p.receiveLock = p.team==="red" ? .88 : .40;
+        p.aiTimer = p.team==="red" ? .95 : .52;
+        p.scanTimer = p.team==="red" ? .62 : .42;
         return;
+      }
+
+      // Only occasionally play a genuine first-time pass on a faster loose ball.
+      if(speed>=150 && Math.random()<dt*.55){
+        const target=safeCpuPassTarget(p);
+        if(target) {
+          kickNearbyLooseBall(p,"pass");
+          return;
+        }
       }
     }
   }
@@ -1004,7 +1087,7 @@ function updateGK(p,dt) {
 
 function updatePhysics(dt) {
   input.actionPriorityTimer=Math.max(0,input.actionPriorityTimer-dt);
-  input.postShotNoTrap=Math.max(0,input.postShotNoTrap-dt);
+  input.postKickNoAutoTrap=Math.max(0,input.postKickNoAutoTrap-dt);
   ball.touchGrace=Math.max(0,ball.touchGrace-dt);
   ball.cpuPassProtect=Math.max(0,ball.cpuPassProtect-dt);
   if(ball.touchGrace<=0) ball.protectedTeam=null;
@@ -1251,12 +1334,17 @@ function drawPlayer(p) {
   ctx.strokeStyle=SKIN;ctx.lineWidth=6;
   ctx.beginPath();ctx.moveTo(-10,-7);ctx.lineTo(-19,8+swing*.35);ctx.moveTo(11,-7);ctx.lineTo(20,7-swing*.35);ctx.stroke();
 
-  // head no hair, dot eyes
-  ctx.fillStyle=SKIN;ctx.beginPath();ctx.arc(0,-26,13,0,Math.PI*2);ctx.fill();
+  // Head stays upright, but CPU can glance left/right while scanning.
+  const headShift = p.controlled ? 0 : p.headLook*4.5;
+  ctx.fillStyle=SKIN;
+  ctx.beginPath();
+  ctx.arc(headShift,-26,13,0,Math.PI*2);
+  ctx.fill();
+
   ctx.fillStyle="#111827";
   ctx.beginPath();
-  ctx.arc(-4,-30,1.7,0,Math.PI*2);
-  ctx.arc(4,-30,1.7,0,Math.PI*2);
+  ctx.arc(headShift-4,-30,1.7,0,Math.PI*2);
+  ctx.arc(headShift+4,-30,1.7,0,Math.PI*2);
   ctx.fill();
 
   if(p.controlled) {
@@ -1349,7 +1437,31 @@ function bindHold(btn, key) {
   const up=e=>{if(pid!==null && (!e || e.pointerId===pid)){input[key]=false;btn.classList.remove("active");pid=null;}};
   btn.addEventListener("pointerup",up);btn.addEventListener("pointercancel",up);
 }
-bindHold(trapBtn,"trap");
+let trapPointer=null;
+trapBtn.addEventListener("pointerdown",e=>{
+  e.preventDefault();
+  trapPointer=e.pointerId;
+  trapBtn.setPointerCapture(trapPointer);
+  input.trap=true;
+  trapBtn.classList.add("active");
+
+  const c=controlled();
+
+  // On defense, TRAP is a short-range foot steal.
+  if((ball.owner && ball.owner.team!=="blue") ||
+     (!ball.owner && dist(c,ball)<42)){
+    shortTrapSteal(c);
+  }
+});
+function releaseTrap(e){
+  if(trapPointer!==null && (!e || e.pointerId===trapPointer)){
+    input.trap=false;
+    trapBtn.classList.remove("active");
+    trapPointer=null;
+  }
+}
+trapBtn.addEventListener("pointerup",releaseTrap);
+trapBtn.addEventListener("pointercancel",releaseTrap);
 
 // DASH is a quick burst, not a hold-to-sprint button.
 dashBtn.addEventListener("pointerdown",e=>{
@@ -1418,12 +1530,12 @@ function releaseShoot() {
 
   if(ball.owner===c || nearbyLooseBallFor(c,112)) {
     playerShoot(c,held);
-    input.postShotNoTrap=.22;
+    input.postKickNoAutoTrap=.50;
   } else if(input.shootBallLock && !ball.owner && dist(c,ball)<128 && ball.z<42) {
     // Small release grace: the ball may have rolled a little during charge,
     // but it is still kicked directly instead of being trapped.
     playerShoot(c,held);
-    input.postShotNoTrap=.22;
+    input.postKickNoAutoTrap=.50;
   } else {
     offBallAction("blue","shoulder");
   }
