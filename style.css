@@ -382,13 +382,7 @@ body.menu-open #hud {
   touch-action: pan-y !important;
 }
 
-.menu-panel *,
-.team-grid,
-.team-card,
-.mode-buttons,
-.menu-button {
-  touch-action: pan-y !important;
-}
+
 
 @media (max-height: 520px) {
   .menu-overlay {
@@ -449,4 +443,25 @@ body.menu-open #hud {
 
 body.practice-open #clock {
   display:none;
+}
+
+
+/* v25: scrolling belongs to the menu container; buttons remain real tap targets */
+.menu-overlay,
+.menu-panel,
+.team-grid {
+  touch-action: pan-y !important;
+}
+
+.menu-button,
+.team-card,
+.tutorial-exit {
+  touch-action: manipulation !important;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.menu-button {
+  position: relative;
+  z-index: 2;
 }

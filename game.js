@@ -2141,10 +2141,31 @@ setInterval(()=>{
 
 
 tournamentBtnEl.addEventListener("click",startTournament);
-practiceBtnEl.addEventListener("click",()=>setMenuScreen(practiceScreenEl));
-soloPracticeBtnEl.addEventListener("click",()=>startPractice("solo"));
-partnerPracticeBtnEl.addEventListener("click",()=>startPractice("partner"));
-practiceBackBtnEl.addEventListener("click",()=>setMenuScreen(modeScreenEl));
+let practiceMenuTapLock=false;
+function openPracticeMenu(e){
+  if(e && e.preventDefault) e.preventDefault();
+  if(practiceMenuTapLock) return;
+  practiceMenuTapLock=true;
+  setMenuScreen(practiceScreenEl);
+  setTimeout(()=>{practiceMenuTapLock=false;},180);
+}
+practiceBtnEl.addEventListener("click",openPracticeMenu);
+practiceBtnEl.addEventListener("pointerup",openPracticeMenu);
+function bindMenuTap(el,fn){
+  let locked=false;
+  const run=(e)=>{
+    if(e && e.preventDefault) e.preventDefault();
+    if(locked) return;
+    locked=true;
+    fn();
+    setTimeout(()=>{locked=false;},180);
+  };
+  el.addEventListener("click",run);
+  el.addEventListener("pointerup",run);
+}
+bindMenuTap(soloPracticeBtnEl,()=>startPractice("solo"));
+bindMenuTap(partnerPracticeBtnEl,()=>startPractice("partner"));
+bindMenuTap(practiceBackBtnEl,()=>setMenuScreen(modeScreenEl));
 tutorialExitBtnEl.addEventListener("click",endPractice);
 
 freeMatchBtnEl.addEventListener("click",()=>{
