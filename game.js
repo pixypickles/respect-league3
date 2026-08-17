@@ -1960,7 +1960,7 @@ function dashTouchSkill(p) {
 }
 
 
-// ---------- Sound effects (v29 file-based, low load) ----------
+// ---------- Sound effects (v30 mobile-safe file audio) ----------
 const SFX_FILES={
   pass:"sfx/pass.wav",
   shot:"sfx/shot.wav",
@@ -1971,9 +1971,12 @@ const SFX_FILES={
   goal:"sfx/goal.wav",
   save:"sfx/save.wav"
 };
+
 const sfxPools={};
 const sfxLastAt={};
 let audioUnlocked=false;
+let audioUnlocking=false;
+let lastUnlockAttempt=0;
 
 function buildSfxPools(){
   for(const [name,src] of Object.entries(SFX_FILES)){
@@ -1981,7 +1984,9 @@ function buildSfxPools(){
     for(let i=0;i<2;i++){
       const a=new Audio(src);
       a.preload="auto";
+      a.playsInline=true;
       a.volume=name==="goal"?.55:.42;
+      try{ a.load(); }catch(e){}
       pool.push(a);
     }
     sfxPools[name]={pool,index:0};
@@ -1989,19 +1994,53 @@ function buildSfxPools(){
 }
 buildSfxPools();
 
-function unlockAudio(){
-  if(audioUnlocked) return;
-  audioUnlocked=true;
-  const a=new Audio("sfx/unlock.wav");
-  a.volume=.01;
-  const p=a.play();
-  if(p && p.catch) p.catch(()=>{});
+async function unlockAllAudio(){
+  const now=performance.now();
+  if(audioUnlocked || audioUnlocking || now-lastUnlockAttempt<400) return;
+  lastUnlockAttempt=now;
+  audioUnlocking=true;
+
+  const all=[];
+  for(const entry of Object.values(sfxPools)){
+    for(const a of entry.pool) all.push(a);
+  }
+
+  let okCount=0;
+  for(const a of all){
+    const originalVolume=a.volume;
+    try{
+      a.muted=true;
+      a.volume=0;
+      a.currentTime=0;
+      const p=a.play();
+      if(p && p.then) await p;
+      a.pause();
+      a.currentTime=0;
+      a.muted=false;
+      a.volume=originalVolume;
+      okCount++;
+    }catch(e){
+      try{
+        a.pause();
+        a.currentTime=0;
+        a.muted=false;
+        a.volume=originalVolume;
+      }catch(_){}
+    }
+  }
+
+  audioUnlocked=okCount>0;
+  audioUnlocking=false;
 }
 
 function sfx(name){
-  if(!audioUnlocked) return;
   const entry=sfxPools[name];
   if(!entry) return;
+
+  if(!audioUnlocked){
+    // Do not block the game. A later user touch will retry unlocking.
+    return;
+  }
 
   const now=performance.now();
   const gap={pass:70,shot:100,super:140,trap:110,dash:120,poke:100,goal:600,save:140}[name]||90;
@@ -2010,15 +2049,30 @@ function sfx(name){
 
   const a=entry.pool[entry.index];
   entry.index=(entry.index+1)%entry.pool.length;
+
   try{
     a.pause();
     a.currentTime=0;
     const p=a.play();
-    if(p && p.catch) p.catch(()=>{});
-  }catch(e){}
+    if(p && p.catch){
+      p.catch(()=>{
+        // Some mobile browsers can revoke playback after inactivity.
+        audioUnlocked=false;
+      });
+    }
+  }catch(e){
+    audioUnlocked=false;
+  }
 }
 
-document.addEventListener("pointerdown",unlockAudio,{once:true});
+// Retry the unlock from genuine user gestures if a browser ever revokes playback.
+document.addEventListener("pointerdown",unlockAllAudio,{passive:true});
+document.addEventListener("touchstart",unlockAllAudio,{passive:true});
+
+// When returning to the page, require one more touch if the browser suspended media.
+document.addEventListener("visibilitychange",()=>{
+  if(document.hidden) audioUnlocked=false;
+});
 
 // ---------- Buttons ----------
 const passBtn=document.getElementById("passBtn");
