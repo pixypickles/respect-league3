@@ -6,31 +6,6 @@ const ctx = canvas.getContext("2d");
 const scoreEl = document.getElementById("score");
 const clockEl = document.getElementById("clock");
 const msgEl = document.getElementById("message");
-const debugV45=document.getElementById("debugV45");
-let dbgFrames=0,dbgUpdates=0,dbgDraws=0,dbgLast=performance.now();
-
-function dbgError(kind,e){
-  debugV45.classList.add("err");
-  debugV45.textContent=kind+": "+(e&&e.stack?e.stack:String(e));
-}
-window.addEventListener("error",e=>dbgError("ERROR",e.error||e.message));
-window.addEventListener("unhandledrejection",e=>dbgError("PROMISE",e.reason));
-
-setInterval(()=>{
-  if(debugV45.classList.contains("err")) return;
-  const now=performance.now();
-  const secs=Math.max(.001,(now-dbgLast)/1000);
-  const fps=Math.round(dbgFrames/secs);
-  debugV45.textContent=
-    "FPS "+fps+
-    " | F "+dbgFrames+
-    " U "+dbgUpdates+
-    " D "+dbgDraws+
-    " | "+(typeof gamePhase!=="undefined"?gamePhase:"?");
-  dbgFrames=dbgUpdates=dbgDraws=0;
-  dbgLast=now;
-},500);
-
 const menuOverlayEl = document.getElementById("menuOverlay");
 const teamScreenEl = document.getElementById("teamScreen");
 const modeScreenEl = document.getElementById("modeScreen");
@@ -1647,7 +1622,6 @@ function goal(who) {
 }
 
 function update(dt) {
-  dbgUpdates++;
   if(gamePhase!=="match" && gamePhase!=="practice") return;
   if(gamePhase==="practice"){
     advanceTutorialIfNeeded();
@@ -1850,7 +1824,6 @@ function drawBall() {
 }
 
 function draw() {
-  dbgDraws++;
   ctx.clearRect(0,0,W,H);
   drawCourt();
 
@@ -1870,7 +1843,6 @@ function draw() {
 }
 
 function frame(now) {
-  dbgFrames++;
   const dt=Math.min(.033,(now-last)/1000);
   last=now;elapsed+=dt;
   update(dt);draw();
@@ -1979,6 +1951,83 @@ stickZone.addEventListener("pointerup",e=>{
   if(e.pointerId===stickPointer) releaseStick();
 });
 stickZone.addEventListener("pointercancel",releaseStick);
+
+
+function dashBallProtectedAgainst(p){
+  return ball.dashProtectTimer>0 &&
+         ball.dashProtectTeam &&
+         p.team!==ball.dashProtectTeam;
+}
+
+function manualTrapCutProtectedBall(p){
+  if(!p || !p.controlled) return false;
+  if(!input.trap) return false;
+  if(!dashBallProtectedAgainst(p)) return false;
+
+  const overlap=dist(p,ball)<30 && ball.z<34;
+  if(!overlap) return false;
+
+  ball.dashProtectTimer=0;
+  ball.dashProtectTeam=null;
+  ball.owner=p;
+  ball.passTarget=null;
+  ball.vx=ball.vy=ball.vz=0;
+  ball.z=0;
+  ball.lastTouch=p;
+  ball.touchGrace=.14;
+  ball.protectedTeam=p.team;
+  p.possessionTime=0;
+  p.kickAnim=.14;
+  showMessage("TRAP CUT!",.34);
+  return true;
+}
+
+function dashTouchSkill(p){
+  const owned=ball.owner===p;
+  const loose=!ball.owner && ball.z<32 && dist(p,ball)<82;
+  if(!owned && !loose) return false;
+
+  const mag=Math.hypot(input.sx,input.sy);
+  let dx=mag>.15?input.sx:p.dirX;
+  let dy=mag>.15?input.sy:p.dirY;
+  if(Math.hypot(dx,dy)<.1){
+    dx=p.team==="blue"?1:-1;
+    dy=0;
+  }
+  const n=norm(dx,dy);
+
+  ball.owner=null;
+  ball.passTarget=null;
+  ball.lastTouch=p;
+  ball.passFrom=p;
+  ball.x=owned?p.x+n.x*24:ball.x;
+  ball.y=owned?p.y+16+n.y*10:ball.y;
+  ball.z=5;
+
+  // v35 adjustment: a little farther forward.
+  ball.vx=n.x*365;
+  ball.vy=n.y*365;
+  ball.vz=88;
+  ball.shot=false;
+  ball.power=365;
+  ball.touchGrace=.10;
+  ball.protectedTeam=p.team;
+  ball.dashProtectTimer=.72;
+  ball.dashProtectTeam=p.team;
+
+  input.dashTimer=.34;
+  input.dashCooldown=.44;
+  input.postKickNoAutoTrap=.24;
+
+  p.dirX=n.x;
+  p.dirY=n.y;
+  p.kickAnim=.15;
+  p.cooldown=.10;
+
+  if(gamePhase==="practice") tutorialFlags.dashSkillUsed=true;
+  showMessage("PUSH & DASH",.34);
+  return true;
+}
 
 // ---------- Buttons ----------
 const passBtn=document.getElementById("passBtn");

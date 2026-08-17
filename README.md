@@ -367,9 +367,12 @@ GitHub Pagesへそのまま配置して遊べます。
 - ゲームの操作・AI・ワンツー・DASH技などは維持
 - 1秒フリーズが消えるか確認するための診断版
 
-## v45 DEBUG
-- 診断表示をコート上部中央（BALL LOOSEの下）へ移動
-- FPSに加えて frame / update / draw の各呼び出し回数を0.5秒ごとに表示
-- 表示例: `FPS 60 | F 30 U 30 D 30 | playing`
-- エラー発生時は赤表示
-- 音声は完全無効
+## v46 フリーズ原因の直接修正
+- v45 DEBUGで `ReferenceError: dashBallProtectedAgainst is not defined` を特定
+- 音声削除時に誤って消えていた以下3関数を復元
+  - `dashBallProtectedAgainst()`
+  - `manualTrapCutProtectedBall()`
+  - `dashTouchSkill()`
+- DASH浮かせ技のv35調整（少し前へ出す）も維持
+- 診断表示は削除
+- 音声は引き続き無効

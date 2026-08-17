@@ -476,20 +476,3 @@ body.practice-open #clock {
 #stickKnob {
   touch-action: none !important;
 }
-
-#debugV45{
- position:absolute;
- left:50%;
- top:82px;
- transform:translateX(-50%);
- z-index:99999;
- min-width:240px;
- padding:5px 10px;
- border-radius:7px;
- background:rgba(0,0,0,.78);
- color:#a8ff9e;
- text-align:center;
- font:800 11px/1.25 monospace;
- pointer-events:none;
-}
-#debugV45.err{background:rgba(180,0,0,.94);color:#fff;}
