@@ -173,3 +173,60 @@ body {
 #shootBtn.active {
   filter: brightness(1.08);
 }
+
+
+/* v15: right-side controls — keep SHOT and DASH clearly separated */
+#shootBtn {
+  right: 1.8vw !important;
+  bottom: 25.5vh !important;
+}
+#dashBtn {
+  right: 1.8vw !important;
+  bottom: 3.0vh !important;
+}
+#passBtn {
+  right: 9.2vw !important;
+  bottom: 22.5vh !important;
+}
+#trapBtn {
+  right: 1.8vw !important;
+  bottom: 47.5vh !important;
+}
+
+/* DOM-based shot charge ring: avoids canvas/layout work that could freeze startup. */
+#shotChargeRing {
+  --charge: 0;
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .06s linear;
+  background:
+    conic-gradient(
+      rgba(255,255,255,.96) calc(var(--charge) * 1turn),
+      rgba(255,255,255,.18) 0
+    );
+  -webkit-mask:
+    radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+  mask:
+    radial-gradient(farthest-side, transparent calc(100% - 7px), #000 calc(100% - 6px));
+}
+#shotChargeRing.show { opacity: 1; }
+#shotChargeLabel {
+  position: absolute;
+  left: 50%;
+  top: -17px;
+  transform: translateX(-50%);
+  font: 900 12px/1 system-ui, sans-serif;
+  color: white;
+  text-shadow: 0 2px 3px rgba(0,0,0,.65);
+  white-space: nowrap;
+}
+
+/* Keep controls usable on shorter landscape phones. */
+@media (max-height: 500px) {
+  #trapBtn { bottom: 49vh !important; }
+  #shootBtn { bottom: 26vh !important; }
+  #dashBtn { bottom: 2vh !important; }
+}

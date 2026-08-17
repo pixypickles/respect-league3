@@ -1014,6 +1014,16 @@ function updateGK(p,dt) {
 }
 
 function updatePhysics(dt) {
+  if(input.shootDown){
+    const held=(performance.now()-input.shootStarted)/1000;
+    const tCharge=clamp(held/.70,0,1);
+    shotChargeRing.style.setProperty("--charge", String(tCharge));
+    shotChargeRing.classList.add("show");
+    shotChargeLabel.textContent = held<.095 ? "LOOP" : (held<=.34 ? "SHOT" : "POWER");
+  } else {
+    shotChargeRing.classList.remove("show");
+  }
+
   input.actionPriorityTimer=Math.max(0,input.actionPriorityTimer-dt);
   input.postKickNoAutoTrap=Math.max(0,input.postKickNoAutoTrap-dt);
   ball.touchGrace=Math.max(0,ball.touchGrace-dt);
@@ -1315,55 +1325,6 @@ function drawBall() {
 }
 
 
-function drawShotCharge() {
-  if(!input.shootDown) return;
-
-  const btn=document.getElementById("shootBtn");
-  if(!btn) return;
-
-  const r=btn.getBoundingClientRect();
-  const canvasRect=canvas.getBoundingClientRect();
-
-  // Convert CSS pixel position to canvas coordinates.
-  const sx=W/canvasRect.width;
-  const sy=H/canvasRect.height;
-  const cx=(r.left+r.width/2-canvasRect.left)*sx;
-  const cy=(r.top+r.height/2-canvasRect.top)*sy;
-  const radius=(r.width*.62)*sx;
-
-  const held=(performance.now()-input.shootStarted)/1000;
-  const t=clamp(held/.70,0,1);
-
-  ctx.save();
-  ctx.lineCap="round";
-
-  // background ring
-  ctx.strokeStyle="rgba(255,255,255,.24)";
-  ctx.lineWidth=8;
-  ctx.beginPath();
-  ctx.arc(cx,cy,radius,0,Math.PI*2);
-  ctx.stroke();
-
-  // charge progress ring
-  ctx.strokeStyle="rgba(255,255,255,.92)";
-  ctx.lineWidth=8;
-  ctx.beginPath();
-  ctx.arc(cx,cy,radius,-Math.PI/2,-Math.PI/2+Math.PI*2*t);
-  ctx.stroke();
-
-  // Tiny center label showing shot type range.
-  ctx.fillStyle="rgba(255,255,255,.95)";
-  ctx.font="900 18px system-ui";
-  ctx.textAlign="center";
-  ctx.textBaseline="middle";
-  let label="LOOP";
-  if(held>=.095 && held<=.34) label="SHOT";
-  if(held>.34) label="POWER";
-  ctx.fillText(label,cx,cy-radius-18);
-
-  ctx.restore();
-}
-
 function draw() {
   ctx.clearRect(0,0,W,H);
   drawCourt();
@@ -1382,7 +1343,6 @@ function draw() {
     ctx.beginPath();ctx.arc(c.x,c.y,35+8*(1-closeness),0,Math.PI*2);ctx.stroke();
   }
 
-  drawShotCharge();
 }
 
 function frame(now) {
@@ -1423,6 +1383,12 @@ stickZone.addEventListener("pointercancel",releaseStick);
 const passBtn=document.getElementById("passBtn");
 const trapBtn=document.getElementById("trapBtn");
 const shootBtn=document.getElementById("shootBtn");
+const shotChargeRing=document.createElement("div");
+shotChargeRing.id="shotChargeRing";
+shotChargeRing.innerHTML='<span id="shotChargeLabel"></span>';
+shootBtn.appendChild(shotChargeRing);
+const shotChargeLabel=document.getElementById("shotChargeLabel");
+
 const dashBtn=document.getElementById("dashBtn");
 
 function bindHold(btn, key) {
@@ -1535,6 +1501,7 @@ function releaseShoot() {
   }
 
   input.shootBallLock=false;
+  if(typeof shotChargeRing!=="undefined") shotChargeRing.classList.remove("show");
 }
 shootBtn.addEventListener("pointerup",releaseShoot);
 shootBtn.addEventListener("pointercancel",releaseShoot);
