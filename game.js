@@ -60,7 +60,8 @@ function makePlayer(team, x,y, role="field", controlled=false) {
     receiveIntent:false,
     cooldown:0,
     possessionTime:0,
-    pressureTime:0
+    pressureTime:0,
+    receiveLock:0
   };
 }
 
@@ -111,7 +112,8 @@ const ball = {
   shot:false,
   power:0,
   touchGrace:0,
-  protectedTeam:null
+  protectedTeam:null,
+  cpuPassProtect:0
 };
 
 function resetKickoff(team="blue") {
@@ -171,6 +173,47 @@ function nearestTeammate(p, forwardBias=false) {
   return best;
 }
 
+
+function pointSegmentDistance(px,py,ax,ay,bx,by){
+  const abx=bx-ax, aby=by-ay;
+  const apx=px-ax, apy=py-ay;
+  const ab2=abx*abx+aby*aby || 1;
+  const t=clamp((apx*abx+apy*aby)/ab2,0,1);
+  const cx=ax+abx*t, cy=ay+aby*t;
+  return Math.hypot(px-cx,py-cy);
+}
+
+function passLaneBlocked(from,to){
+  // Ignore defenders very close to receiver only if receiver has clearly more space.
+  for(const e of opponents(from.team)){
+    if(e.role==="gk") continue;
+    const dLine=pointSegmentDistance(e.x,e.y,from.x,from.y,to.x,to.y);
+    const along=dist(from,e);
+    const total=dist(from,to);
+    if(dLine<42 && along>38 && along<total-28) return true;
+  }
+  return false;
+}
+
+function safeCpuPassTarget(p){
+  const attack=p.team==="blue"?1:-1;
+  const candidates=teamPlayers(p.team)
+    .filter(q=>q!==p && q.role!=="gk")
+    .map(q=>{
+      const d=dist(p,q);
+      const nearestEnemy=Math.min(...opponents(p.team).filter(e=>e.role!=="gk").map(e=>dist(q,e)));
+      const blocked=passLaneBlocked(p,q);
+      const forward=(q.x-p.x)*attack;
+      const score=(blocked?-1000:0) + nearestEnemy*2.2 + forward*.35 + d*.12;
+      return {q,d,nearestEnemy,blocked,score};
+    })
+    // No tiny passes in a crowd.
+    .filter(c=>c.d>135 && !c.blocked && c.nearestEnemy>62)
+    .sort((a,b)=>b.score-a.score);
+
+  return candidates.length ? candidates[0].q : null;
+}
+
 function bestPassTarget(p, inputDir=null) {
   const mates = teamPlayers(p.team).filter(q=>q!==p && q.role!=="gk");
   if(!mates.length) return null;
@@ -214,23 +257,42 @@ function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
 
 function doPass(p, forcedTarget=null) {
   if(!p || ball.owner!==p) return;
+
   let target=forcedTarget;
   if(!target) {
     if(p.controlled && Math.hypot(input.sx,input.sy)>.2) {
       target=bestPassTarget(p,{x:input.sx,y:input.sy});
-    } else target=bestPassTarget(p);
+    } else if(!p.controlled) {
+      target=safeCpuPassTarget(p) || bestPassTarget(p);
+    } else {
+      target=bestPassTarget(p);
+    }
   }
   if(!target) return;
+
   target.receiveIntent=true;
-  const lead = target.controlled ? 95 : 62;
+  target.receiveLock=.18;
+
+  const lead = target.controlled ? 95 : 48;
   let tx=target.x + target.dirX*lead;
   let ty=target.y + target.dirY*lead;
-  if(target.controlled && Math.hypot(input.sx,input.sy)>.15) {
-    tx=target.x+input.sx*120; ty=target.y+input.sy*120;
-  }
-  kickBall(p,tx-p.x,ty-p.y,420,38,false,target);
-}
 
+  if(target.controlled && Math.hypot(input.sx,input.sy)>.15) {
+    tx=target.x+input.sx*120;
+    ty=target.y+input.sy*120;
+  }
+
+  const d=dist(p,target);
+  const cpuSpeed=!p.controlled ? clamp(430+d*.22,455,555) : 420;
+  kickBall(p,tx-p.x,ty-p.y,cpuSpeed,30,false,target);
+
+  if(!p.controlled){
+    // A real pass should travel cleanly for a brief moment instead of being
+    // instantly re-touched at the passer's feet.
+    ball.cpuPassProtect=.24;
+    ball.protectedTeam=p.team;
+  }
+}
 function playerShoot(p, chargeSec) {
   if(ball.owner!==p) return;
   const stickMag=Math.hypot(input.sx,input.sy);
@@ -260,7 +322,12 @@ function trapWindowFor(p) {
 function attemptTrap(p, dt) {
   if(!trapWindowFor(p)) return false;
 
-  // Immediately after a touch, the opposing CPU cannot instantly poke/trap it back.
+  // CPU passes need a tiny clean-flight window. Without this, two nearby CPUs
+  // can re-touch the same pass every few frames and appear to "fight" forever.
+  if(ball.cpuPassProtect>0 && ball.protectedTeam && p.team!==ball.protectedTeam && !p.controlled) {
+    return false;
+  }
+
   if(ball.touchGrace>0 && ball.protectedTeam && p.team!==ball.protectedTeam) {
     return false;
   }
@@ -270,6 +337,7 @@ function attemptTrap(p, dt) {
 
   if(input.trap && p.controlled) {
     ball.owner=p;
+    ball.passTarget=null;
     ball.vx=ball.vy=ball.vz=0;
     ball.z=0;
     ball.lastTouch=p;
@@ -307,6 +375,8 @@ function attemptTrap(p, dt) {
       ball.protectedTeam=p.team;
       p.possessionTime=0;
       p.receiveIntent=false;
+      p.receiveLock=.22;
+      p.aiTimer=.22;
       return true;
     }
   }
@@ -515,11 +585,13 @@ function aiWithBall(p,dt) {
   const near=closestOpponent(p);
   const attack=p.team==="blue"?1:-1;
 
-  // If pressure arrives, don't stand and wrestle for the ball: move it immediately.
-  if(near.d<88 && p.cooldown<=.08) {
-    const target=bestPassTarget(p,true) || bestPassTarget(p);
+  // Under pressure, only play a pass if there is a genuinely safe lane.
+  // Otherwise shield/step away briefly instead of machine-gunning tiny passes.
+  if(near.d<92 && p.cooldown<=.08 && p.receiveLock<=0) {
+    const target=safeCpuPassTarget(p);
     if(target) {
       doPass(p,target);
+      p.receiveLock=.16;
       return;
     }
   }
@@ -528,8 +600,8 @@ function aiWithBall(p,dt) {
   const goalDist=Math.hypot(goalX-p.x,goalY-p.y);
 
   // CPU prefers passing. Dribble only when clearly unpressured.
-  if(p.aiTimer<=0) {
-    p.aiTimer=rand(.16,.28);
+  if(p.aiTimer<=0 && p.receiveLock<=0) {
+    p.aiTimer=rand(.24,.38);
 
     if(goalDist<260 && Math.abs(p.y-goalY)<180 && near.d>90) {
       const aimY=goalY+rand(-75,75);
@@ -537,8 +609,8 @@ function aiWithBall(p,dt) {
       return;
     }
 
-    let target=bestPassTarget(p);
-    if(target && (near.d<180 || Math.random()<.72)) {
+    let target=safeCpuPassTarget(p);
+    if(target && (near.d<190 || Math.random()<.74)) {
       doPass(p,target);
       return;
     }
@@ -549,9 +621,9 @@ function aiWithBall(p,dt) {
     dx=attack;
     dy=clamp((goalY-p.y)/210,-.55,.55);
   } else {
-    // shield / look for lane, very little "take-on" dribbling
-    dx=attack*.18;
-    dy=near.p ? Math.sign(p.y-near.p.y)*.9 : 0;
+    // Shield sideways and create a passing lane; avoid standing chest-to-chest.
+    dx=-attack*.08;
+    dy=near.p ? Math.sign(p.y-near.p.y || 1) : 1;
   }
   const n=norm(dx,dy);
   p.dirX=n.x;p.dirY=n.y;
@@ -569,7 +641,7 @@ function updateAI(p,dt) {
 
   // One designated presser only. Challenge after staying close briefly;
   // no random CPU sliding in normal pressure.
-  if(ball.owner && ball.owner.team!==p.team && ball.touchGrace<=0) {
+  if(ball.owner && ball.owner.team!==p.team && ball.touchGrace<=0 && ball.cpuPassProtect<=0) {
     const e=ball.owner;
     const nearest=teamPlayers(p.team).filter(q=>q.role!=="gk").sort((a,b)=>dist(a,e)-dist(b,e))[0];
     if(nearest===p && dist(p,e)<54) {
@@ -634,10 +706,12 @@ function updateGK(p,dt) {
 
 function updatePhysics(dt) {
   ball.touchGrace=Math.max(0,ball.touchGrace-dt);
+  ball.cpuPassProtect=Math.max(0,ball.cpuPassProtect-dt);
   if(ball.touchGrace<=0) ball.protectedTeam=null;
 
   for(const p of [...teams.blue,...teams.red]) {
     p.cooldown=Math.max(0,p.cooldown-dt);
+    p.receiveLock=Math.max(0,p.receiveLock-dt);
     p.kickAnim=Math.max(0,p.kickAnim-dt);
     p.slide=Math.max(0,p.slide-dt);
 
