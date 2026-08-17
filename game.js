@@ -47,7 +47,10 @@ const input = {
   shootBallLock: false,
   postKickNoAutoTrap: 0,
   shootDown: false,
-  shootStarted: 0
+  shootStarted: 0,
+  lastShotTapAt: -9999,
+  pendingShotTimer: null,
+  pendingShotPlayer: null
 };
 
 const teams = { blue: [], red: [] };
@@ -426,12 +429,11 @@ function doPass(p, forcedTarget=null) {
     ball.protectedTeam=p.team;
   }
 }
-function playerShoot(p, chargeSec) {
-  // v20: every SHOT is a strong shot aimed at the opponent goal.
-  // Stick vertical input chooses top / center / bottom of the goal.
+function playerShoot(p, chargeSec, superShot=false) {
+  // v21: all shots aim at goal. Double tap = SUPER SHOT.
   const canShootOwned = ball.owner===p;
-  const canShootLoose = !ball.owner && ball.z<42 && dist(p,ball)<128;
-  if(!canShootOwned && !canShootLoose) return;
+  const canShootLoose = !ball.owner && ball.z<42 && dist(p,ball)<132;
+  if(!canShootOwned && !canShootLoose) return false;
 
   const goalX = p.team==="blue" ? COURT.x+COURT.w+12 : COURT.x-12;
   const goalTop = H/2-GOAL_H/2;
@@ -446,8 +448,8 @@ function playerShoot(p, chargeSec) {
 
   const fromX = canShootOwned ? p.x : ball.x;
   const fromY = canShootOwned ? p.y+16 : ball.y;
-  const speed=650;
-  const lift=30;
+  const speed = superShot ? 790 : 650;
+  const lift  = superShot ? 26 : 30;
 
   if(canShootOwned) {
     kickBall(p,goalX-fromX,targetY-fromY,speed,lift,true,null);
@@ -469,7 +471,8 @@ function playerShoot(p, chargeSec) {
   }
 
   input.postKickNoAutoTrap=.50;
-  showMessage("POWER SHOT",.35);
+  showMessage(superShot ? "SUPER SHOT!" : "POWER SHOT", superShot ? .48 : .35);
+  return true;
 }
 
 function trapWindowFor(p) {
@@ -1440,6 +1443,51 @@ stickZone.addEventListener("pointermove",e=>{if(e.pointerId===stickPointer)updat
 stickZone.addEventListener("pointerup",e=>{if(e.pointerId===stickPointer)releaseStick();});
 stickZone.addEventListener("pointercancel",releaseStick);
 
+
+function dashTouchSkill(p) {
+  const owned = ball.owner===p;
+  const loose = !ball.owner && ball.z<32 && dist(p,ball)<82;
+  if(!owned && !loose) return false;
+
+  const mag=Math.hypot(input.sx,input.sy);
+  let dx=mag>.15?input.sx:p.dirX;
+  let dy=mag>.15?input.sy:p.dirY;
+  if(Math.hypot(dx,dy)<.1){
+    dx=p.team==="blue"?1:-1;
+    dy=0;
+  }
+  const n=norm(dx,dy);
+
+  // A small lifted push into space.
+  ball.owner=null;
+  ball.passTarget=null;
+  ball.lastTouch=p;
+  ball.passFrom=p;
+  ball.x = owned ? p.x+n.x*24 : ball.x;
+  ball.y = owned ? p.y+16+n.y*10 : ball.y;
+  ball.z=5;
+  ball.vx=n.x*315;
+  ball.vy=n.y*315;
+  ball.vz=92;
+  ball.shot=false;
+  ball.power=315;
+  ball.touchGrace=.10;
+  ball.protectedTeam=p.team;
+
+  // Slightly longer burst than ordinary dash so the player catches the touch.
+  input.dashTimer=.30;
+  input.dashCooldown=.42;
+  input.postKickNoAutoTrap=.24;
+
+  p.dirX=n.x;
+  p.dirY=n.y;
+  p.kickAnim=.15;
+  p.cooldown=.10;
+
+  showMessage("PUSH & DASH",.34);
+  return true;
+}
+
 // ---------- Buttons ----------
 const passBtn=document.getElementById("passBtn");
 const trapBtn=document.getElementById("trapBtn");
@@ -1482,8 +1530,13 @@ trapBtn.addEventListener("pointercancel",releaseTrap);
 dashBtn.addEventListener("pointerdown",e=>{
   e.preventDefault();
   if(input.dashCooldown<=0){
-    input.dashTimer=.19;
-    input.dashCooldown=.34;
+    const c=controlled();
+
+    if(!dashTouchSkill(c)){
+      input.dashTimer=.19;
+      input.dashCooldown=.34;
+    }
+
     dashBtn.classList.add("active");
     setTimeout(()=>dashBtn.classList.remove("active"),150);
   }
@@ -1531,32 +1584,64 @@ shootBtn.addEventListener("pointerdown",e=>{
   input.shootDown=true;
   input.shootStarted=performance.now();
 
-  // Lock an owned or nearby slow ball to the shot action so auto-control expiry
-  // cannot turn a charged shot into a defensive slide.
   input.shootBallLock = (ball.owner===c || nearbyLooseBallFor(c,104));
-
   shootBtn.classList.add("active");
 });
+
+function canPlayerShootNow(c){
+  return ball.owner===c ||
+         nearbyLooseBallFor(c,116) ||
+         (input.shootBallLock && !ball.owner && dist(c,ball)<132 && ball.z<42);
+}
+
+function firePendingNormalShot(){
+  const c=input.pendingShotPlayer;
+  input.pendingShotTimer=null;
+  input.pendingShotPlayer=null;
+
+  if(c && canPlayerShootNow(c)){
+    playerShoot(c,0,false);
+  }
+}
+
 function releaseShoot() {
   if(!input.shootDown)return;
-  input.shootDown=false;shootBtn.classList.remove("active");
-  const held=(performance.now()-input.shootStarted)/1000;
-  const c=controlled();
 
-  if(ball.owner===c || nearbyLooseBallFor(c,112)) {
-    playerShoot(c,held);
-    input.postKickNoAutoTrap=.50;
-  } else if(input.shootBallLock && !ball.owner && dist(c,ball)<128 && ball.z<42) {
-    // Small release grace: the ball may have rolled a little during charge,
-    // but it is still kicked directly instead of being trapped.
-    playerShoot(c,held);
-    input.postKickNoAutoTrap=.50;
-  } else {
+  input.shootDown=false;
+  shootBtn.classList.remove("active");
+
+  const c=controlled();
+  const now=performance.now();
+  const shootable=canPlayerShootNow(c);
+
+  if(!shootable){
+    input.shootBallLock=false;
     offBallAction("blue","shoulder");
+    return;
+  }
+
+  const isDoubleTap = (now-input.lastShotTapAt) <= 230 && input.pendingShotTimer!==null;
+
+  if(isDoubleTap){
+    clearTimeout(input.pendingShotTimer);
+    input.pendingShotTimer=null;
+    input.pendingShotPlayer=null;
+    input.lastShotTapAt=-9999;
+
+    playerShoot(c,0,true);
+  } else {
+    input.lastShotTapAt=now;
+    input.pendingShotPlayer=c;
+
+    // Small wait gives the player a chance to make a deliberate quick double tap.
+    // A single tap still fires automatically after this short window.
+    if(input.pendingShotTimer!==null) clearTimeout(input.pendingShotTimer);
+    input.pendingShotTimer=setTimeout(firePendingNormalShot,210);
   }
 
   input.shootBallLock=false;
 }
+
 shootBtn.addEventListener("pointerup",releaseShoot);
 shootBtn.addEventListener("pointercancel",releaseShoot);
 
@@ -1565,7 +1650,10 @@ const keys=new Set();
 addEventListener("keydown",e=>{
   keys.add(e.code);
   if(e.code==="KeyZ") input.trap=true;
-  if(e.code==="KeyX"&&!e.repeat && input.dashCooldown<=0){input.dashTimer=.19;input.dashCooldown=.34;}
+  if(e.code==="KeyX"&&!e.repeat && input.dashCooldown<=0){
+    const c=controlled();
+    if(!dashTouchSkill(c)){input.dashTimer=.19;input.dashCooldown=.34;}
+  }
   if(e.code==="KeyA"&&!e.repeat) passBtn.dispatchEvent(new PointerEvent("pointerdown",{pointerId:99}));
   if(e.code==="KeyS"&&!e.repeat){input.shootDown=true;input.shootStarted=performance.now();}
 });
