@@ -6,6 +6,23 @@ const ctx = canvas.getContext("2d");
 const scoreEl = document.getElementById("score");
 const clockEl = document.getElementById("clock");
 const msgEl = document.getElementById("message");
+const debugStatusEl = document.getElementById("debugStatus");
+let debugFrameCount=0;
+let debugLastTime=0;
+
+function showDebugError(label,err){
+  const msg = err && err.stack ? err.stack : String(err);
+  debugStatusEl.classList.add("error");
+  debugStatusEl.textContent = label + "\n" + msg;
+}
+
+window.addEventListener("error",e=>{
+  showDebugError("WINDOW ERROR", e.error || (e.message+" @ "+e.filename+":"+e.lineno));
+});
+window.addEventListener("unhandledrejection",e=>{
+  showDebugError("PROMISE ERROR", e.reason);
+});
+
 const menuOverlayEl = document.getElementById("menuOverlay");
 const teamScreenEl = document.getElementById("teamScreen");
 const modeScreenEl = document.getElementById("modeScreen");
@@ -1843,10 +1860,28 @@ function draw() {
 }
 
 function frame(now) {
+  try {
+    debugFrameCount++;
+    if(debugFrameCount % 15 === 0){
+      const now=performance.now();
+      debugStatusEl.textContent =
+        "DEBUG RUNNING\n"+
+        "frames: "+debugFrameCount+"\n"+
+        "time: "+Math.round(now)+"ms\n"+
+        "phase: "+(typeof gamePhase!=="undefined"?gamePhase:"?")+"\n"+
+        "ballOwner: "+(ball && ball.owner ? ball.owner.team : "none");
+      debugLastTime=now;
+    }
+
   const dt=Math.min(.033,(now-last)/1000);
   last=now;elapsed+=dt;
   update(dt);draw();
   requestAnimationFrame(frame);
+
+  } catch(err) {
+    showDebugError("LOOP ERROR frame "+debugFrameCount, err);
+    throw err;
+  }
 }
 requestAnimationFrame(frame);
 
