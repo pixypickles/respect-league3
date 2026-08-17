@@ -383,6 +383,7 @@ const input = {
   sx: 0, sy: 0,
   stickActive: false,
   trap: false,
+  trapGraceTimer: 0,
   dash: false,
   dashTimer: 0,
   dashCooldown: 0,
@@ -2018,22 +2019,26 @@ function dashTouchSkill(p){
   ball.z=5;
 
   // v35 adjustment: a little farther forward.
-  ball.vx=n.x*365;
-  ball.vy=n.y*365;
-  ball.vz=88;
+  // v51: push slightly farther into space so the player can burst past a defender.
+  ball.vx=n.x*395;
+  ball.vy=n.y*395;
+  ball.vz=84;
   ball.shot=false;
   ball.power=365;
   ball.touchGrace=.10;
   ball.protectedTeam=p.team;
-  ball.dashProtectTimer=.72;
+  ball.dashProtectTimer=.82;
   ball.dashProtectTeam=p.team;
 
-  input.dashTimer=.34;
-  input.dashCooldown=.44;
+  // Stronger chase burst: easier to get beyond the defender and catch the ball.
+  input.dashTimer=.40;
+  input.dashCooldown=.48;
   input.postKickNoAutoTrap=.24;
 
   p.dirX=n.x;
   p.dirY=n.y;
+  p.vx=n.x*260;
+  p.vy=n.y*260;
   p.kickAnim=.15;
   p.cooldown=.10;
 
@@ -2063,6 +2068,7 @@ trapBtn.addEventListener("pointerdown",e=>{
   trapPointer=e.pointerId;
   trapBtn.setPointerCapture(trapPointer);
   input.trap=true;
+  input.trapGraceTimer=.22;
   trapBtn.classList.add("active");
 
   const c=controlled();
@@ -2076,6 +2082,7 @@ trapBtn.addEventListener("pointerdown",e=>{
 function releaseTrap(e){
   if(trapPointer!==null && (!e || e.pointerId===trapPointer)){
     input.trap=false;
+    input.trapGraceTimer=Math.max(input.trapGraceTimer,.22);
     trapBtn.classList.remove("active");
     trapPointer=null;
   }
