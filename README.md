@@ -333,3 +333,11 @@ GitHub Pagesへそのまま配置して遊べます。
 - `pointerdown` / `pointerup` / `touchstart` の音声アンロック処理を廃止
 - 確認音が成功した場合だけ `SOUND ON ✓`
 - ゲーム中に個別効果音が1回失敗してもSOUND OFFへ勝手に戻さない
+
+## v34 音声ファイル読み込みを完全廃止
+- SOUND ON確認音をJavaScript内へData URIとして直接埋め込み
+- パス/シュート/DASH/ゴール等の効果音もすべて埋め込み
+- `sfx/*.mp3` や `sfx/*.wav` の読み込み成功/失敗に依存しない
+- SOUND ONクリック内で新しいAudioを生成して、その場で確認音をplay()
+- 成功した場合だけ `SOUND ON ✓`
+- Web Audio / AudioContextは不使用
