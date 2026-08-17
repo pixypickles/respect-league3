@@ -1,0 +1,499 @@
+* {
+  box-sizing: border-box;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+}
+
+html, body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #111827;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+}
+
+#gameWrap {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #111827;
+}
+
+#game {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #d49a63;
+}
+
+#rotateNotice {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  align-items: center;
+  justify-content: center;
+  background: #111827;
+  color: white;
+  font-weight: 800;
+  font-size: 6vw;
+  text-align: center;
+  padding: 8vw;
+}
+
+@media (orientation: portrait) {
+  #rotateNotice { display: flex; }
+  #gameWrap { display: none; }
+}
+
+#hud {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: white;
+  font-weight: 900;
+  text-shadow: 0 2px 5px rgba(0,0,0,.65);
+  font-size: clamp(14px, 2.3vw, 26px);
+  pointer-events: none;
+}
+
+#clock {
+  background: rgba(0,0,0,.3);
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
+.control-zone {
+  position: absolute;
+  z-index: 5;
+}
+
+#stickZone {
+  left: max(4px, env(safe-area-inset-left));
+  bottom: max(8px, env(safe-area-inset-bottom));
+  width: min(16vw, 190px);
+  height: min(48vw, 300px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#stickBase {
+  position: relative;
+  width: min(13vw, 145px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 4px solid rgba(255,255,255,.38);
+  background: rgba(15,23,42,.30);
+  box-shadow: inset 0 0 24px rgba(0,0,0,.25);
+}
+
+#stickKnob {
+  position: absolute;
+  width: 46%;
+  aspect-ratio: 1;
+  left: 27%;
+  top: 27%;
+  border-radius: 50%;
+  background: rgba(255,255,255,.78);
+  border: 3px solid rgba(0,0,0,.18);
+  transform: translate(0, 0);
+}
+
+#buttons {
+  right: max(4px, env(safe-area-inset-right));
+  top: 15%;
+  bottom: auto;
+  width: min(16vw, 190px);
+  height: 70%;
+}
+
+.game-btn {
+  position: absolute;
+  width: min(9.2vw, 76px);
+  height: min(9.2vw, 76px);
+  min-width: 52px;
+  min-height: 52px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.48);
+  color: white;
+  font-weight: 900;
+  font-size: clamp(11px, 1.8vw, 18px);
+  text-shadow: 0 2px 3px rgba(0,0,0,.45);
+  box-shadow: 0 3px 0 rgba(0,0,0,.15), inset 0 2px 8px rgba(255,255,255,.08);
+  opacity: .72;
+  outline: 0;
+}
+
+.game-btn:active,
+.game-btn.active {
+  opacity: .88;
+  transform: translateY(3px) scale(.96);
+  box-shadow: 0 2px 0 rgba(0,0,0,.24), inset 0 3px 9px rgba(0,0,0,.18);
+}
+
+.pass  { left: 4%; top: 36%; background: rgba(59,130,246,.72); }
+.trap  { right: 4%; top: 10%; background: rgba(34,197,94,.72); }
+.shoot { right: 4%; top: 48%; background: rgba(239,68,68,.72); }
+.dash  { right: 4%; bottom: 4%; background: rgba(245,158,11,.72); }
+
+#message {
+  position: absolute;
+  top: 13%;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  font-weight: 900;
+  font-size: clamp(15px, 2.4vw, 28px);
+  text-shadow: 0 2px 5px black;
+  opacity: 0;
+  transition: opacity .12s;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+
+/* v18: version display */
+#versionTag {
+  font-size: .65em;
+  opacity: .82;
+  background: rgba(0,0,0,.28);
+  padding: 3px 7px;
+  border-radius: 7px;
+}
+
+/* v18: separate SHOT and DASH without touching game logic */
+#buttons .trap {
+  right: 2%;
+  left: auto;
+  top: 0%;
+  bottom: auto;
+}
+
+#buttons .pass {
+  left: 0%;
+  right: auto;
+  top: 34%;
+  bottom: auto;
+}
+
+#buttons .shoot {
+  right: 0%;
+  left: auto;
+  top: 42%;
+  bottom: auto;
+}
+
+#buttons .dash {
+  right: 0%;
+  left: auto;
+  top: auto;
+  bottom: -5%;
+}
+
+
+/* ===== v22 Team / Mode UI ===== */
+#score {
+  max-width: 58vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: clamp(12px, 2vw, 23px);
+}
+
+.menu-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4vh 10vw;
+  background: rgba(10, 18, 30, .84);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.menu-overlay.hidden {
+  display: none;
+}
+
+.menu-panel {
+  width: min(920px, 82vw);
+  max-height: 88vh;
+  overflow: auto;
+  text-align: center;
+  color: white;
+  background: rgba(15, 23, 42, .88);
+  border: 2px solid rgba(255,255,255,.18);
+  border-radius: 22px;
+  padding: clamp(16px, 3vw, 30px);
+  box-shadow: 0 18px 48px rgba(0,0,0,.4);
+}
+
+.menu-panel.hidden { display: none; }
+
+.menu-panel h1 {
+  margin: 4px 0 18px;
+  font-size: clamp(24px, 4vw, 42px);
+}
+
+.menu-kicker {
+  font-size: clamp(10px, 1.5vw, 14px);
+  font-weight: 900;
+  letter-spacing: .16em;
+  opacity: .7;
+}
+
+.team-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.team-card {
+  min-height: 145px;
+  border: 2px solid rgba(255,255,255,.16);
+  border-radius: 18px;
+  background: rgba(255,255,255,.07);
+  color: white;
+  padding: 12px 8px;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.team-card:active {
+  transform: scale(.97);
+}
+
+.kit-preview {
+  width: 64px;
+  height: 74px;
+  border-radius: 13px 13px 18px 18px;
+  margin: 0 auto 9px;
+  border: 2px solid rgba(255,255,255,.4);
+  box-shadow: 0 7px 16px rgba(0,0,0,.3);
+}
+
+.kit-blizzard {
+  background: repeating-linear-gradient(90deg,#f8fafc 0 10px,#2563eb 10px 20px);
+}
+.kit-salvida-a { background: #7a1832; }
+.kit-salvida-b { background: #22c7c4; }
+.kit-takezo {
+  background: repeating-linear-gradient(0deg,#172554 0 18px,#f05aa6 18px 36px);
+}
+.kit-manchester-p { background: #081a3a; }
+
+.team-name {
+  display: block;
+  font-size: clamp(10px, 1.55vw, 15px);
+  line-height: 1.2;
+}
+
+.mode-buttons {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.menu-button {
+  border: 2px solid rgba(255,255,255,.25);
+  border-radius: 14px;
+  padding: 14px 22px;
+  background: rgba(255,255,255,.10);
+  color: white;
+  font-weight: 900;
+  font-size: clamp(13px, 2vw, 18px);
+}
+
+.menu-button.primary {
+  background: rgba(37, 99, 235, .72);
+}
+.menu-button.small {
+  padding: 10px 16px;
+  font-size: clamp(11px, 1.5vw, 14px);
+}
+
+.result-score {
+  font-size: clamp(34px, 7vw, 76px);
+  font-weight: 950;
+  margin: 4px 0 16px;
+}
+
+.tournament-progress {
+  min-height: 26px;
+  margin: 0 0 16px;
+  font-weight: 800;
+  opacity: .85;
+}
+
+body.menu-open #stickZone,
+body.menu-open #buttons,
+body.menu-open #hud {
+  opacity: .16;
+  pointer-events: none;
+}
+
+@media (max-width: 900px) {
+  .team-grid {
+    grid-template-columns: repeat(3, minmax(105px, 1fr));
+  }
+  .team-card {
+    min-height: 120px;
+  }
+  .kit-preview {
+    width: 48px;
+    height: 56px;
+  }
+}
+
+
+/* v23: allow vertical scrolling inside menu screens on short landscape displays */
+.menu-overlay {
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y !important;
+  overscroll-behavior-y: contain;
+  align-items: flex-start;
+}
+
+.menu-panel {
+  flex: 0 0 auto;
+  margin: max(12px, 3vh) auto;
+  max-height: none;
+  overflow: visible;
+  touch-action: pan-y !important;
+}
+
+
+
+@media (max-height: 520px) {
+  .menu-overlay {
+    padding-top: 8px;
+    padding-bottom: 24px;
+  }
+  .menu-panel {
+    margin-top: 8px;
+    margin-bottom: 24px;
+    padding-top: 14px;
+    padding-bottom: 18px;
+  }
+}
+
+
+/* ===== v24 Practice / Tutorial ===== */
+.tutorial-hud {
+  position: absolute;
+  left: 50%;
+  top: max(10px, env(safe-area-inset-top));
+  transform: translateX(-50%);
+  z-index: 20;
+  width: min(620px, 62vw);
+  padding: 9px 52px 9px 14px;
+  border-radius: 14px;
+  background: rgba(8, 15, 28, .78);
+  border: 1px solid rgba(255,255,255,.22);
+  color: white;
+  pointer-events: none;
+  text-align: left;
+}
+.tutorial-hud.hidden { display:none; }
+.tutorial-step {
+  font-size: clamp(9px,1.2vw,12px);
+  font-weight: 950;
+  letter-spacing: .12em;
+  opacity: .65;
+}
+.tutorial-text {
+  font-size: clamp(12px,1.7vw,17px);
+  font-weight: 850;
+  line-height: 1.35;
+}
+.tutorial-exit {
+  position:absolute;
+  right:7px;
+  top:50%;
+  transform:translateY(-50%);
+  pointer-events:auto;
+  border:1px solid rgba(255,255,255,.25);
+  border-radius:9px;
+  background:rgba(255,255,255,.10);
+  color:white;
+  font-weight:900;
+  font-size:10px;
+  padding:7px 8px;
+}
+
+body.practice-open #clock {
+  display:none;
+}
+
+
+/* v25: scrolling belongs to the menu container; buttons remain real tap targets */
+.menu-overlay,
+.menu-panel,
+.team-grid {
+  touch-action: pan-y !important;
+}
+
+.menu-button,
+.team-card,
+.tutorial-exit {
+  touch-action: manipulation !important;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.menu-button {
+  position: relative;
+  z-index: 2;
+}
+
+
+
+
+
+/* v37: circular stick restored; drag between axes to make diagonals */
+#stickZone,
+#stickBase,
+#stickKnob {
+  touch-action: none !important;
+}
+
+#runtimeErrorV49{
+  display:none;
+  position:absolute;
+  left:50%;
+  top:110px;
+  transform:translateX(-50%);
+  z-index:99999;
+  width:min(760px,78vw);
+  max-height:42vh;
+  overflow:auto;
+  padding:10px 12px;
+  border:3px solid white;
+  border-radius:10px;
+  background:rgba(185,0,0,.96);
+  color:white;
+  font:800 12px/1.35 monospace;
+  white-space:pre-wrap;
+  pointer-events:none;
+}
+#runtimeErrorV49.show{display:block;}
