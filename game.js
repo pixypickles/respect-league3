@@ -1962,47 +1962,79 @@ function dashTouchSkill(p) {
 }
 
 
-// ---------- Sound effects ----------
+// ---------- Sound effects (v28 lightweight) ----------
 let audioCtx=null;
+let masterGain=null;
+const sfxLastAt={};
+
 function ensureAudio(){
   if(!audioCtx){
     const AC=window.AudioContext||window.webkitAudioContext;
-    if(AC) audioCtx=new AC();
+    if(!AC) return;
+    audioCtx=new AC();
+    masterGain=audioCtx.createGain();
+    masterGain.gain.value=.16;
+    masterGain.connect(audioCtx.destination);
   }
-  if(audioCtx && audioCtx.state==="suspended") audioCtx.resume();
+  if(audioCtx.state==="suspended") audioCtx.resume();
 }
-function tone(freq=220,dur=.05,type="sine",vol=.06,endFreq=null){
-  ensureAudio();
-  if(!audioCtx) return;
-  const now=audioCtx.currentTime;
-  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
-  o.type=type;o.frequency.setValueAtTime(freq,now);
-  if(endFreq) o.frequency.exponentialRampToValueAtTime(Math.max(20,endFreq),now+dur);
-  g.gain.setValueAtTime(vol,now);
-  g.gain.exponentialRampToValueAtTime(.001,now+dur);
-  o.connect(g);g.connect(audioCtx.destination);o.start(now);o.stop(now+dur);
-}
-function noise(dur=.04,vol=.035){
-  ensureAudio(); if(!audioCtx)return;
-  const n=Math.max(1,Math.floor(audioCtx.sampleRate*dur));
-  const b=audioCtx.createBuffer(1,n,audioCtx.sampleRate),d=b.getChannelData(0);
-  for(let i=0;i<n;i++) d[i]=(Math.random()*2-1)*(1-i/n);
-  const s=audioCtx.createBufferSource(),g=audioCtx.createGain();
-  s.buffer=b;g.gain.value=vol;s.connect(g);g.connect(audioCtx.destination);s.start();
-}
-function sfx(name){
-  if(name==="pass"){tone(150,.045,"triangle",.055,105);noise(.025,.018);}
-  else if(name==="shot"){tone(105,.075,"square",.065,58);noise(.045,.035);}
-  else if(name==="super"){tone(92,.11,"sawtooth",.075,42);noise(.065,.05);}
-  else if(name==="trap"){tone(210,.028,"triangle",.025,170);}
-  else if(name==="dash"){tone(330,.055,"sine",.035,150);}
-  else if(name==="poke"){noise(.045,.045);tone(125,.035,"triangle",.035,90);}
-  else if(name==="goal"){tone(440,.10,"square",.04,660);setTimeout(()=>tone(660,.16,"square",.04,880),90);}
-  else if(name==="save"){noise(.055,.04);tone(180,.05,"triangle",.04,120);}
-}
-document.addEventListener("pointerdown",ensureAudio,{once:true});
 
+function playTone(freq,dur=.045,type="sine",vol=.18,endFreq=null){
+  ensureAudio();
+  if(!audioCtx || !masterGain) return;
+
+  const now=audioCtx.currentTime;
+  const o=audioCtx.createOscillator();
+  const g=audioCtx.createGain();
+
+  o.type=type;
+  o.frequency.setValueAtTime(freq,now);
+  if(endFreq){
+    o.frequency.linearRampToValueAtTime(endFreq,now+dur);
+  }
+
+  g.gain.setValueAtTime(vol,now);
+  g.gain.linearRampToValueAtTime(0,now+dur);
+
+  o.connect(g);
+  g.connect(masterGain);
+  o.start(now);
+  o.stop(now+dur+.01);
+}
+
+function sfx(name){
+  // Throttle repeated sounds so ball-control loops can't spawn hundreds of audio nodes.
+  const now=performance.now();
+  const minGap={
+    pass:55,
+    shot:90,
+    super:120,
+    trap:90,
+    dash:100,
+    poke:90,
+    goal:500,
+    save:120
+  }[name] ?? 80;
+
+  if((sfxLastAt[name]||0)+minGap>now) return;
+  sfxLastAt[name]=now;
+
+  if(name==="pass") playTone(170,.035,"triangle",.13,120);
+  else if(name==="shot") playTone(115,.060,"square",.17,72);
+  else if(name==="super") playTone(90,.085,"sawtooth",.19,48);
+  else if(name==="trap") playTone(220,.025,"triangle",.09,180);
+  else if(name==="dash") playTone(310,.045,"sine",.11,175);
+  else if(name==="poke") playTone(135,.035,"square",.10,95);
+  else if(name==="save") playTone(185,.040,"triangle",.11,125);
+  else if(name==="goal"){
+    playTone(440,.09,"square",.12,620);
+    // No setTimeout chain: one lightweight tone only.
+  }
+}
+
+document.addEventListener("pointerdown",ensureAudio,{once:true});
 // ---------- Buttons ----------
+
 const passBtn=document.getElementById("passBtn");
 const trapBtn=document.getElementById("trapBtn");
 const shootBtn=document.getElementById("shootBtn");
