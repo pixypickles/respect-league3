@@ -59,7 +59,8 @@ function makePlayer(team, x,y, role="field", controlled=false) {
     target:null,
     receiveIntent:false,
     cooldown:0,
-    possessionTime:0
+    possessionTime:0,
+    pressureTime:0
   };
 }
 
@@ -285,17 +286,17 @@ function attemptTrap(p, dt) {
     const squad=teamPlayers(p.team).filter(q=>q.role!=="gk" && !q.controlled);
     const nearest=squad.slice().sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
 
-    // Intended receiver always has priority. Otherwise only nearest CPU may take it.
-    const allowed = (ball.passTarget===p) || (nearest===p);
-    if(!allowed) return false;
-
-    // If an opponent is simultaneously very close, don't let both auto-trap every frame.
+    // Intended receiver gets priority. A non-target CPU only takes a truly loose,
+    // slow and uncontested ball. This prevents both teams from auto-trapping at once.
     const oppNear = opponents(p.team)
       .filter(q=>q.role!=="gk")
-      .some(q=>dist(q,ball)<42);
+      .some(q=>dist(q,ball)<58);
 
-    let success = Math.random() < (speed>550?.72:.94);
-    if(oppNear && ball.passTarget!==p) success = Math.random()<.58;
+    const isTarget = ball.passTarget===p;
+    const looseCollector = nearest===p && speed<120 && !oppNear && !ball.passTarget;
+    if(!isTarget && !looseCollector) return false;
+
+    let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
       ball.owner=p;
@@ -426,58 +427,78 @@ function aiMoveOffBall(p,dt) {
   const idx=squad.indexOf(p);
   let tx=p.x,ty=p.y;
 
+  const keepAwayFromBall=(x,y,minR)=>{
+    const dx=x-ball.x, dy=y-ball.y;
+    const d=Math.hypot(dx,dy);
+    if(d<minR){
+      const n=norm(dx || (idx%2?1:-1), dy || (idx<2?-1:1));
+      x=ball.x+n.x*minR;
+      y=ball.y+n.y*minR;
+    }
+    return {
+      x:clamp(x,COURT.x+55,COURT.x+COURT.w-55),
+      y:clamp(y,COURT.y+55,COURT.y+COURT.h-55)
+    };
+  };
+
   if(ball.owner && ball.owner.team===p.team) {
     const o=ball.owner;
-    // Stable support lanes. CPU players spread around the ball instead of all chasing it.
-    const lanes=[-175,175,-70,90];
-    const depths=[95,95,215,-145];
-    const lane=lanes[idx%lanes.length];
-    const depth=depths[idx%depths.length];
-    tx=clamp(o.x+attack*depth,COURT.x+105,COURT.x+COURT.w-105);
-    ty=clamp(H/2+lane,COURT.y+70,COURT.y+COURT.h-70);
 
-    // If this player is the intended receiver, attack the passing lane.
+    // Fixed passing lanes around the owner. Do not collapse onto the ball carrier.
+    const lanes=[-180,180,-75,80];
+    const depths=[120,120,235,-165];
+    tx=clamp(o.x+attack*depths[idx%4],COURT.x+90,COURT.x+COURT.w-90);
+    ty=clamp(H/2+lanes[idx%4],COURT.y+65,COURT.y+COURT.h-65);
+
     if(ball.passTarget===p || p.receiveIntent) {
-      tx=clamp(p.x+attack*75,COURT.x+90,COURT.x+COURT.w-90);
+      // Receiver attacks the lane but does not run into the current owner.
+      tx=clamp(p.x+attack*90,COURT.x+80,COURT.x+COURT.w-80);
       ty=clamp(p.y+p.dirY*55,COURT.y+60,COURT.y+COURT.h-60);
+    } else {
+      const k=keepAwayFromBall(tx,ty,105);
+      tx=k.x;ty=k.y;
     }
+
   } else if(ball.owner && ball.owner.team!==p.team) {
     const e=ball.owner;
-    const field=squad.slice().sort((a,b)=>dist(a,e)-dist(b,e));
-    const press=field[0]===p;
-    if(press) {
-      tx=e.x-attack*34; ty=e.y;
-    } else {
-      // Everyone else protects a different lane rather than collapsing onto the ball.
-      const defendX=p.team==="blue"?360:920;
-      const laneY=[190,360,530,285][idx%4];
-      tx=lerp(defendX,e.x,.18);
-      ty=lerp(laneY,e.y,.12);
-    }
-  } else {
-    // Only one player per team attacks a loose ball. Others stay in support lanes.
-    const nearest=squad.slice().sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
-    if(nearest===p){
-      const enemyNearest=opponents(p.team)
-        .filter(q=>q.role!=="gk")
-        .sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
+    const defenders=squad.slice().sort((a,b)=>dist(a,e)-dist(b,e));
+    const presser=defenders[0];
 
-      // Approach from own side instead of standing directly on top of the opponent.
-      const ownSide=p.team==="blue"?-1:1;
-      tx=ball.x + ownSide*18;
+    if(presser===p) {
+      // Presser stops just short instead of occupying the exact same point.
+      const side=p.team==="blue"?-1:1;
+      tx=e.x+side*48;
+      ty=e.y;
+    } else {
+      // All other defenders remain in lanes and are explicitly kept away from the ball.
+      const baseX=p.team==="blue"?390:890;
+      const laneY=[190,360,530,285][idx%4];
+      tx=lerp(baseX,e.x,.14);
+      ty=lerp(laneY,e.y,.10);
+      const k=keepAwayFromBall(tx,ty,125);
+      tx=k.x;ty=k.y;
+    }
+
+  } else {
+    // Loose ball: only one CPU per team may enter the contest radius.
+    const nearest=squad.slice().sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
+    if(nearest===p) {
+      const side=p.team==="blue"?-1:1;
+      tx=ball.x+side*34;
       ty=ball.y;
-      if(enemyNearest && dist(enemyNearest,ball)<45){
-        ty += Math.sign(p.y-enemyNearest.y || (idx%2?1:-1))*22;
-      }
     } else {
       tx=p.team==="blue"?430:850;
       ty=[190,360,530,285][idx%4];
+      const k=keepAwayFromBall(tx,ty,140);
+      tx=k.x;ty=k.y;
     }
   }
 
   const n=norm(tx-p.x,ty-p.y);
   if(n.m>8){p.dirX=n.x;p.dirY=n.y;}
-  const desired=n.m<18?0:p.speed*.78;
+
+  // Stop when close to tactical target instead of continuously drifting into teammates.
+  const desired=n.m<24?0:p.speed*.72;
   p.vx=lerp(p.vx,n.x*desired,clamp(dt*5,0,1));
   p.vy=lerp(p.vy,n.y*desired,clamp(dt*5,0,1));
 }
@@ -493,13 +514,22 @@ function aiWithBall(p,dt) {
   }
   const near=closestOpponent(p);
   const attack=p.team==="blue"?1:-1;
+
+  // If pressure arrives, don't stand and wrestle for the ball: move it immediately.
+  if(near.d<88 && p.cooldown<=.08) {
+    const target=bestPassTarget(p,true) || bestPassTarget(p);
+    if(target) {
+      doPass(p,target);
+      return;
+    }
+  }
   const goalX=p.team==="blue"?COURT.x+COURT.w:COURT.x;
   const goalY=H/2;
   const goalDist=Math.hypot(goalX-p.x,goalY-p.y);
 
   // CPU prefers passing. Dribble only when clearly unpressured.
   if(p.aiTimer<=0) {
-    p.aiTimer=rand(.22,.42);
+    p.aiTimer=rand(.16,.28);
 
     if(goalDist<260 && Math.abs(p.y-goalY)<180 && near.d>90) {
       const aimY=goalY+rand(-75,75);
@@ -537,14 +567,23 @@ function updateAI(p,dt) {
   if(ball.owner===p) aiWithBall(p,dt);
   else aiMoveOffBall(p,dt);
 
-  // Only the closest defender actively challenges, preventing CPU pile-ups.
-  if(ball.owner && ball.owner.team!==p.team && p.cooldown<=0 && ball.touchGrace<=0) {
+  // One designated presser only. Challenge after staying close briefly;
+  // no random CPU sliding in normal pressure.
+  if(ball.owner && ball.owner.team!==p.team && ball.touchGrace<=0) {
     const e=ball.owner;
     const nearest=teamPlayers(p.team).filter(q=>q.role!=="gk").sort((a,b)=>dist(a,e)-dist(b,e))[0];
-    if(nearest===p && dist(p,e)<50) {
-      if(Math.random()<dt*1.25) defensivePoke(p);
-      else if(Math.random()<dt*.22) slide(p);
+    if(nearest===p && dist(p,e)<54) {
+      p.pressureTime+=dt;
+      if(p.pressureTime>.28 && p.cooldown<=0) {
+        defensivePoke(p);
+        p.pressureTime=0;
+        p.cooldown=.5;
+      }
+    } else {
+      p.pressureTime=0;
     }
+  } else {
+    p.pressureTime=0;
   }
 }
 
@@ -617,12 +656,41 @@ function updatePhysics(dt) {
     checkSlideSteal(p);
   }
 
-  // Mild player separation
+  // Strong player separation
   const all=[...teams.blue,...teams.red];
+
+  // Keep uninvolved CPU players out of the immediate ball crowd.
+  for(const p of all) {
+    if(p.controlled || p.role==="gk" || ball.owner===p || ball.passTarget===p) continue;
+
+    let allowedNear=false;
+    if(ball.owner && ball.owner.team!==p.team) {
+      const nearest=teamPlayers(p.team)
+        .filter(q=>q.role!=="gk")
+        .sort((a,b)=>dist(a,ball.owner)-dist(b,ball.owner))[0];
+      allowedNear = nearest===p;
+    } else if(!ball.owner) {
+      const nearest=teamPlayers(p.team)
+        .filter(q=>q.role!=="gk" && !q.controlled)
+        .sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
+      allowedNear = nearest===p;
+    }
+
+    if(!allowedNear) {
+      const d=dist(p,ball);
+      const minD=105;
+      if(d<minD && d>0) {
+        const n=norm(p.x-ball.x,p.y-ball.y);
+        const push=(minD-d)*.55;
+        p.x+=n.x*push;
+        p.y+=n.y*push;
+      }
+    }
+  }
   for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
     const a=all[i],b=all[j], d=dist(a,b);
-    if(d<PLAYER_R*1.75 && d>0){
-      const n=norm(a.x-b.x,a.y-b.y), push=(PLAYER_R*1.85-d)*.34;
+    if(d<PLAYER_R*2.05 && d>0){
+      const n=norm(a.x-b.x,a.y-b.y), push=(PLAYER_R*2.05-d)*.48;
       a.x+=n.x*push;b.x-=n.x*push;a.y+=n.y*push;b.y-=n.y*push;
     }
   }
