@@ -16,6 +16,15 @@ const opponentGridEl = document.getElementById("opponentGrid");
 const selectedTeamNameEl = document.getElementById("selectedTeamName");
 const tournamentBtnEl = document.getElementById("tournamentBtn");
 const freeMatchBtnEl = document.getElementById("freeMatchBtn");
+const practiceBtnEl = document.getElementById("practiceBtn");
+const practiceScreenEl = document.getElementById("practiceScreen");
+const soloPracticeBtnEl = document.getElementById("soloPracticeBtn");
+const partnerPracticeBtnEl = document.getElementById("partnerPracticeBtn");
+const practiceBackBtnEl = document.getElementById("practiceBackBtn");
+const tutorialHudEl = document.getElementById("tutorialHud");
+const tutorialStepEl = document.getElementById("tutorialStep");
+const tutorialTextEl = document.getElementById("tutorialText");
+const tutorialExitBtnEl = document.getElementById("tutorialExitBtn");
 const modeBackBtnEl = document.getElementById("modeBackBtn");
 const opponentBackBtnEl = document.getElementById("opponentBackBtn");
 const resultKickerEl = document.getElementById("resultKicker");
@@ -51,6 +60,11 @@ let gamePhase="menu";
 let tournamentOpponents=[];
 let tournamentRound=0;
 let matchFinished=false;
+let practiceType=null;
+let tutorialIndex=0;
+let tutorialTimer=0;
+let tutorialFlags={};
+let practicePartner=null;
 
 function teamDef(id){
   return TEAM_DEFS.find(t=>t.id===id) || TEAM_DEFS[0];
@@ -70,7 +84,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  for(const el of [teamScreenEl,modeScreenEl,opponentScreenEl,resultScreenEl]){
+  for(const el of [teamScreenEl,modeScreenEl,opponentScreenEl,practiceScreenEl,resultScreenEl]){
     el.classList.add("hidden");
   }
   which.classList.remove("hidden");
@@ -220,6 +234,122 @@ function finishMatch(){
   setMenuScreen(resultScreenEl);
 }
 
+
+const SOLO_TUTORIAL = [
+  {step:"STEP 1", text:"左スティックを倒して移動してみよう。", done:()=>Math.hypot(input.sx,input.sy)>.55},
+  {step:"STEP 2", text:"TRAPを押しながらボールを足元でキープしよう。", done:()=>ball.owner===controlled() && input.trap},
+  {step:"STEP 3", text:"PASSを押して、近くの味方へパスしよう。", done:()=>tutorialFlags.passUsed},
+  {step:"STEP 4", text:"SHOTを押して強シュートを撃ってみよう。上下入力でコースを狙える。", done:()=>tutorialFlags.shotUsed},
+  {step:"STEP 5", text:"ボールが近い状態でDASH。少し浮かせて前へ出し、そのまま追いつこう。", done:()=>tutorialFlags.dashSkillUsed},
+  {step:"STEP 6", text:"守備では PASS＝足を出す、SHOT＝ショルダー、TRAP＝短い足出し。操作を確認しよう。", done:()=>tutorialFlags.defenseUsed},
+  {step:"COMPLETE", text:"基本操作は完了！自由に練習してOK。", done:()=>false}
+];
+
+const PARTNER_TUTORIAL = [
+  {step:"STEP 1", text:"味方へPASSして、パス交換してみよう。", done:()=>tutorialFlags.passUsed},
+  {step:"STEP 2", text:"パスを出したあと前へ走ろう。もう一度PASSを押すとリターン要求。", done:()=>tutorialFlags.returnUsed},
+  {step:"STEP 3", text:"リターンパスを前のスペースで受けよう。必要ならDASHで追いつく。", done:()=>tutorialFlags.receiveReturn},
+  {step:"STEP 4", text:"近くのルーズボールはTRAPせずPASS/SHOTでダイレクトに処理できる。", done:()=>tutorialFlags.directUsed},
+  {step:"COMPLETE", text:"2人練習完了！パス→前へ抜ける動きを繰り返してみよう。", done:()=>false}
+];
+
+function currentTutorial(){
+  const arr=practiceType==="partner"?PARTNER_TUTORIAL:SOLO_TUTORIAL;
+  return arr[Math.min(tutorialIndex,arr.length-1)];
+}
+
+function refreshTutorialHud(){
+  const t=currentTutorial();
+  tutorialStepEl.textContent=t.step;
+  tutorialTextEl.textContent=t.text;
+}
+
+function advanceTutorialIfNeeded(){
+  if(gamePhase!=="practice") return;
+  const t=currentTutorial();
+  if(t.done && t.done()){
+    const arr=practiceType==="partner"?PARTNER_TUTORIAL:SOLO_TUTORIAL;
+    if(tutorialIndex<arr.length-1){
+      tutorialIndex++;
+      refreshTutorialHud();
+      showMessage("OK!",.35);
+    }
+  }
+}
+
+function setupPracticePlayers(type){
+  // Keep blue side only; red field players are moved out of active play.
+  const b=teams.blue, r=teams.red;
+  const c=controlled();
+
+  Object.assign(c,{x:430,y:360,vx:0,vy:0});
+  c.dirX=1;c.dirY=0;
+
+  // one partner in partner mode; otherwise place teammates well away
+  if(type==="partner"){
+    practicePartner=b.find(p=>!p.controlled && p.role!=="gk");
+    Object.assign(practicePartner,{x:650,y:360,vx:0,vy:0});
+    for(const p of b){
+      if(p!==c && p!==practicePartner){
+        p.x=COURT.x+45;p.y=COURT.y+45;
+      }
+    }
+  } else {
+    practicePartner=b.find(p=>!p.controlled && p.role!=="gk");
+    Object.assign(practicePartner,{x:650,y:360,vx:0,vy:0});
+    for(const p of b){
+      if(p!==c && p!==practicePartner){
+        p.x=COURT.x+45;p.y=COURT.y+45;
+      }
+    }
+  }
+
+  for(const p of r){
+    if(p.role==="gk"){
+      p.x=COURT.x+COURT.w-30;p.y=H/2;
+    }else{
+      p.x=COURT.x+COURT.w-55;
+      p.y=COURT.y+45;
+    }
+    p.vx=p.vy=0;
+  }
+
+  ball.owner=c;
+  ball.x=c.x+22;
+  ball.y=c.y+18;
+  ball.z=0;
+  ball.vx=ball.vy=ball.vz=0;
+  ball.passTarget=null;
+  ball.shot=false;
+}
+
+function startPractice(type){
+  gameMode="practice";
+  gamePhase="practice";
+  practiceType=type;
+  tutorialIndex=0;
+  tutorialTimer=0;
+  tutorialFlags={};
+  scoreBlue=scoreRed=0;
+  opponentTeamId=TEAM_DEFS.find(t=>t.id!==selectedTeamId).id;
+  setupPracticePlayers(type);
+  updateScoreLabel();
+  scoreEl.textContent=type==="partner"
+    ? `${teamDef(selectedTeamId).name}  2人練習`
+    : `${teamDef(selectedTeamId).name}  ひとり練習`;
+  tutorialHudEl.classList.remove("hidden");
+  document.body.classList.add("practice-open");
+  refreshTutorialHud();
+  hideMenu();
+}
+
+function endPractice(){
+  tutorialHudEl.classList.add("hidden");
+  document.body.classList.remove("practice-open");
+  practiceType=null;
+  gamePhase="menu";
+  setMenuScreen(modeScreenEl);
+}
 function startTournament(){
   gameMode="tournament";
   tournamentOpponents=TEAM_DEFS.filter(t=>t.id!==selectedTeamId).map(t=>t.id);
@@ -905,6 +1035,7 @@ function shoulderCharge(actor) {
     ball.protectedTeam=actor.team;
   }
 
+  if(gamePhase==="practice") tutorialFlags.defenseUsed=true;
   showMessage("SHOULDER!",.32);
   return true;
 }
@@ -1192,6 +1323,25 @@ function aiWithBall(p,dt) {
 }
 
 function updateAI(p,dt) {
+  if(gamePhase==="practice"){
+    if(p.team==="red") return;
+    if(p.role==="gk") return;
+    if(p.controlled){updateControlled(p,dt);return;}
+
+    if(practiceType==="partner" && p===practicePartner){
+      if(ball.owner===p){
+        p.aiTimer-=dt;
+        if(p.aiTimer<=0){
+          p.aiTimer=.55;
+          doPass(p,controlled());
+        }
+      }else{
+        aiMoveOffBall(p,dt);
+      }
+    }
+    return;
+  }
+
   if(p.role==="gk") return;
   if(p.stagger>0){
     p.vx*=Math.pow(.18,dt);
@@ -1256,6 +1406,7 @@ function updateAI(p,dt) {
 }
 
 function updateGK(p,dt) {
+  if(gamePhase==="practice" && p.team==="blue") return;
   const ownLeft=p.team==="blue";
   const gx=ownLeft?COURT.x+30:COURT.x+COURT.w-30;
   const gy=clamp(ball.y,H/2-GOAL_H/2+25,H/2+GOAL_H/2-25);
@@ -1432,6 +1583,7 @@ function updatePhysics(dt) {
     receiver.receiveIntent=false;
     kickBall(receiver,targetX-receiver.x,targetY-receiver.y,420,24,false,c);
     ball.returnRequested=false;
+    if(gamePhase==="practice") tutorialFlags.receiveReturn=true;
     showMessage("RETURN!",.4);
   }
 
@@ -1462,7 +1614,10 @@ function goal(who) {
 }
 
 function update(dt) {
-  if(gamePhase!=="match") return;
+  if(gamePhase!=="match" && gamePhase!=="practice") return;
+  if(gamePhase==="practice"){
+    advanceTutorialIfNeeded();
+  }
   if(messageTimer>0){messageTimer-=dt;if(messageTimer<=0)msgEl.style.opacity="0";}
   if(goalPause>0) {
     goalPause-=dt;
@@ -1470,14 +1625,16 @@ function update(dt) {
     return;
   }
 
-  matchLeft=Math.max(0,matchLeft-dt);
-  const m=Math.floor(matchLeft/60),s=Math.floor(matchLeft%60).toString().padStart(2,"0");
-  clockEl.textContent=`${m}:${s}`;
-  if(matchLeft<=0){
-    clockEl.textContent="0:00";
-    showMessage("TIME UP",1);
-    finishMatch();
-    return;
+  if(gamePhase==="match"){
+    matchLeft=Math.max(0,matchLeft-dt);
+    const m=Math.floor(matchLeft/60),s=Math.floor(matchLeft%60).toString().padStart(2,"0");
+    clockEl.textContent=`${m}:${s}`;
+    if(matchLeft<=0){
+      clockEl.textContent="0:00";
+      showMessage("TIME UP",1);
+      finishMatch();
+      return;
+    }
   }
 
   for(const p of teams.blue) p.role==="gk"?updateGK(p,dt):updateAI(p,dt);
@@ -1788,6 +1945,7 @@ function dashTouchSkill(p) {
   p.kickAnim=.15;
   p.cooldown=.10;
 
+  if(gamePhase==="practice") tutorialFlags.dashSkillUsed=true;
   showMessage("PUSH & DASH",.34);
   return true;
 }
@@ -1848,6 +2006,7 @@ dashBtn.addEventListener("pointerdown",e=>{
 
 passBtn.addEventListener("pointerdown",e=>{
   e.preventDefault();
+  if(gamePhase==="practice") tutorialFlags.passUsed=true;
   input.actionPriorityTimer=.16;
   const c=controlled();
 
@@ -1859,6 +2018,7 @@ passBtn.addEventListener("pointerdown",e=>{
   // Directly kick a nearby loose ball without needing TRAP first.
   if(nearbyLooseBallFor(c,82) && !dashBallProtectedAgainst(c)) {
     if(kickNearbyLooseBall(c,"pass")) {
+      if(gamePhase==="practice") tutorialFlags.directUsed=true;
       showMessage("DIRECT PASS",.28);
     }
     return;
@@ -1867,6 +2027,7 @@ passBtn.addEventListener("pointerdown",e=>{
   // If our pass is still travelling to a teammate, this means one-two / return request.
   if(!ball.owner && ball.passFrom===c && ball.passTarget && ball.passTarget.team==="blue") {
     ball.returnRequested=true;
+    if(gamePhase==="practice") tutorialFlags.returnUsed=true;
     showMessage("RETURN REQUEST",.35);
     return;
   }
@@ -1911,6 +2072,7 @@ function firePendingNormalShot(){
 
 function releaseShoot() {
   if(!input.shootDown)return;
+  if(gamePhase==="practice") tutorialFlags.shotUsed=true;
 
   input.shootDown=false;
   shootBtn.classList.remove("active");
@@ -1979,6 +2141,12 @@ setInterval(()=>{
 
 
 tournamentBtnEl.addEventListener("click",startTournament);
+practiceBtnEl.addEventListener("click",()=>setMenuScreen(practiceScreenEl));
+soloPracticeBtnEl.addEventListener("click",()=>startPractice("solo"));
+partnerPracticeBtnEl.addEventListener("click",()=>startPractice("partner"));
+practiceBackBtnEl.addEventListener("click",()=>setMenuScreen(modeScreenEl));
+tutorialExitBtnEl.addEventListener("click",endPractice);
+
 freeMatchBtnEl.addEventListener("click",()=>{
   renderOpponentSelection();
   setMenuScreen(opponentScreenEl);
