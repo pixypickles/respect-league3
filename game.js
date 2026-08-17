@@ -6,10 +6,9 @@ const ctx = canvas.getContext("2d");
 const scoreEl = document.getElementById("score");
 const clockEl = document.getElementById("clock");
 const msgEl = document.getElementById("message");
-const shotChargeMeterEl = document.getElementById("shotChargeMeter");
-const shotChargeFillEl = document.getElementById("shotChargeFill");
-const shotChargeTextEl = document.getElementById("shotChargeText");
-
+const shotChargeMeterEl=document.getElementById("shotChargeMeter");
+const shotChargeFillEl=document.getElementById("shotChargeFill");
+const shotChargeTextEl=document.getElementById("shotChargeText");
 
 const W = 1280, H = 720;
 const COURT = { x: 205, y: 62, w: 870, h: 596 };
@@ -242,21 +241,122 @@ function bestPassTarget(p, inputDir=null) {
       const d=Math.hypot(vx,vy)||1;
       const qdir={x:vx/d,y:vy/d};
       const align=qdir.x*idir.x+qdir.y*idir.y;
-
-      // Direction is the main factor; distance only fine-tunes selection.
       let score=align*6.0-d/650;
       if(align>.70) score+=2.0;
-
-      if(score>bestScore){
-        bestScore=score;
-        best=q;
-      }
+      if(score>bestScore){bestScore=score;best=q;}
     }
     return best;
   }
 
   return mates.slice().sort((a,b)=>dist(p,a)-dist(p,b))[0];
 }
+
+
+function nearbyLooseBallFor(p, radius=84) {
+  return !ball.owner && ball.z<34 && dist(p,ball)<=radius;
+}
+
+function looseBallPassTarget(p) {
+  const stickMag = p.controlled ? Math.hypot(input.sx,input.sy) : 0;
+  let target = null;
+
+  if(p.controlled && stickMag>.18) {
+    target = bestPassTarget(p,{x:input.sx,y:input.sy});
+  } else if(!p.controlled) {
+    target = safeCpuPassTarget(p);
+  } else {
+    target = bestPassTarget(p);
+  }
+
+  // Don't blindly clear forward when there is no teammate to receive.
+  if(!target) return null;
+
+  // For direct loose-ball passes, reject absurdly distant or tightly marked targets.
+  const d=dist(p,target);
+  if(d>520) return null;
+
+  const enemyNear=Math.min(...opponents(p.team)
+    .filter(e=>e.role!=="gk")
+    .map(e=>dist(target,e)));
+  if(enemyNear<45) return null;
+
+  return target;
+}
+
+function kickNearbyLooseBall(p, kind="pass") {
+  if(!nearbyLooseBallFor(p,82)) return false;
+
+  const stickMag = p.controlled ? Math.hypot(input.sx,input.sy) : 0;
+  let dx = stickMag>.18 ? input.sx : p.dirX;
+  let dy = stickMag>.18 ? input.sy : p.dirY;
+  if(Math.hypot(dx,dy)<.1){ dx=p.team==="blue"?1:-1; dy=0; }
+
+  p.x = clamp(p.x,COURT.x+25,COURT.x+COURT.w-25);
+  p.y = clamp(p.y,COURT.y+25,COURT.y+COURT.h-25);
+
+  if(kind==="pass") {
+    const target = looseBallPassTarget(p);
+
+    // PASS is a pass, not a generic clearance. If nobody is available, do nothing.
+    if(!target) {
+      if(p.controlled) showMessage("NO PASS",.28);
+      return false;
+    }
+
+    target.receiveIntent=true;
+    const tx=target.x+target.dirX*42;
+    const ty=target.y+target.dirY*42;
+    const n=norm(tx-ball.x,ty-ball.y);
+
+    ball.lastTouch=p;
+    ball.passFrom=p;
+    ball.passTarget=target;
+    ball.owner=null;
+    ball.touchGrace=.12;
+    ball.protectedTeam=p.team;
+    ball.vx=n.x*380;
+    ball.vy=n.y*380;
+    ball.vz=24;
+    ball.shot=false;
+    ball.power=380;
+
+    if(p.controlled) input.postKickNoAutoTrap=.50;
+    p.kickAnim=.18;
+    p.cooldown=.16;
+
+    if(!p.controlled){
+      const attack=p.team==="blue"?1:-1;
+      p.afterPassRunTimer=.95;
+      p.afterPassX=clamp(p.x+attack*135,COURT.x+70,COURT.x+COURT.w-70);
+      p.afterPassY=clamp(p.y+(Math.sign(p.y-H/2)||1)*65,COURT.y+60,COURT.y+COURT.h-60);
+    }
+    return true;
+  }
+
+  if(kind==="shot") {
+    const n=norm(dx,dy);
+
+    ball.lastTouch=p;
+    ball.passFrom=p;
+    ball.passTarget=null;
+    ball.owner=null;
+    ball.touchGrace=.12;
+    ball.protectedTeam=p.team;
+    ball.vx=n.x*520;
+    ball.vy=n.y*520;
+    ball.vz=28;
+    ball.shot=true;
+    ball.power=520;
+
+    if(p.controlled) input.postKickNoAutoTrap=.50;
+    p.kickAnim=.18;
+    p.cooldown=.16;
+    return true;
+  }
+
+  return false;
+}
+
 
 function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
   const n=norm(dx,dy);
@@ -997,16 +1097,6 @@ function updateGK(p,dt) {
 }
 
 function updatePhysics(dt) {
-  if(input.shootDown){
-    const held=(performance.now()-input.shootStarted)/1000;
-    const ratio=clamp(held/.70,0,1);
-    shotChargeMeterEl.classList.add("show");
-    shotChargeFillEl.style.width=(ratio*100).toFixed(0)+"%";
-    shotChargeTextEl.textContent=held<.095?"LOOP":(held<=.34?"SHOT":"POWER");
-  } else {
-    shotChargeMeterEl.classList.remove("show");
-  }
-
   input.actionPriorityTimer=Math.max(0,input.actionPriorityTimer-dt);
   input.postKickNoAutoTrap=Math.max(0,input.postKickNoAutoTrap-dt);
   ball.touchGrace=Math.max(0,ball.touchGrace-dt);
@@ -1146,6 +1236,16 @@ function goal(who) {
 }
 
 function update(dt) {
+  if(input.shootDown){
+    const held=(performance.now()-input.shootStarted)/1000;
+    const ratio=clamp(held/.70,0,1);
+    shotChargeMeterEl.classList.add("show");
+    shotChargeFillEl.style.width=(ratio*100)+"%";
+    shotChargeTextEl.textContent=held<.095?"LOOP":(held<=.34?"SHOT":"POWER");
+  } else {
+    shotChargeMeterEl.classList.remove("show");
+  }
+
   if(messageTimer>0){messageTimer-=dt;if(messageTimer<=0)msgEl.style.opacity="0";}
   if(goalPause>0) {
     goalPause-=dt;
@@ -1255,7 +1355,7 @@ function drawPlayer(p) {
   ctx.strokeStyle=SKIN;ctx.lineWidth=6;
   ctx.beginPath();ctx.moveTo(-10,-7);ctx.lineTo(-19,8+swing*.35);ctx.moveTo(11,-7);ctx.lineTo(20,7-swing*.35);ctx.stroke();
 
-  // Head position is fixed; only the eyes scan left/right.
+  // Head stays fixed; only the eyes scan left/right.
   const eyeShift=p.controlled?0:p.headLook*3;
   ctx.fillStyle=SKIN;
   ctx.beginPath();ctx.arc(0,-26,13,0,Math.PI*2);ctx.fill();

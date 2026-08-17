@@ -165,59 +165,49 @@ body {
   white-space: nowrap;
 }
 
-
 #versionTag {
   font-size: .65em;
-  opacity: .78;
+  opacity: .8;
   background: rgba(0,0,0,.28);
   padding: 3px 7px;
   border-radius: 7px;
 }
 
 #shotChargeMeter {
-  position: absolute;
-  right: max(18px, env(safe-area-inset-right));
-  top: 7%;
-  width: min(180px, 22vw);
-  height: 22px;
-  border: 2px solid rgba(255,255,255,.55);
-  border-radius: 11px;
-  background: rgba(0,0,0,.28);
-  opacity: 0;
-  pointer-events: none;
-  overflow: hidden;
-  z-index: 8;
+  position:absolute;
+  right:max(12px, env(safe-area-inset-right));
+  top:8%;
+  width:min(160px,20vw);
+  height:20px;
+  border:2px solid rgba(255,255,255,.55);
+  border-radius:10px;
+  background:rgba(0,0,0,.3);
+  opacity:0;
+  pointer-events:none;
+  z-index:8;
+  overflow:hidden;
 }
-#shotChargeMeter.show { opacity: 1; }
-
+#shotChargeMeter.show { opacity:1; }
 #shotChargeFill {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 0%;
-  background: rgba(255,255,255,.48);
+  position:absolute;
+  left:0; top:0; bottom:0;
+  width:0;
+  background:rgba(255,255,255,.5);
 }
-
 #shotChargeText {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: 900;
-  font-size: clamp(10px, 1.4vw, 14px);
-  text-shadow: 0 1px 3px rgba(0,0,0,.7);
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#fff;
+  font-weight:900;
+  font-size:11px;
+  text-shadow:0 1px 3px #000;
 }
 
-/* v16: keep right-side buttons clearly separated within the side gutter */
-#buttons .trap  { right: 2%; left: auto; top: 0%; bottom: auto; }
-#buttons .pass  { left: 0%; right: auto; top: 37%; bottom: auto; }
-#buttons .shoot { right: 0%; left: auto; top: 45%; bottom: auto; }
-#buttons .dash  { right: 0%; left: auto; top: auto; bottom: 0%; }
-
-@media (max-height: 500px) {
-  #buttons .trap  { top: 0%; }
-  #buttons .pass  { top: 36%; }
-  #buttons .shoot { top: 46%; }
-  #buttons .dash  { bottom: 0%; }
-}
+/* v17 button spacing */
+#buttons .trap  { right:2%; left:auto; top:0%; bottom:auto; }
+#buttons .pass  { left:0%; right:auto; top:34%; bottom:auto; }
+#buttons .shoot { right:0%; left:auto; top:43%; bottom:auto; }
+#buttons .dash  { right:0%; left:auto; top:auto; bottom:-2%; }
