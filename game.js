@@ -12,7 +12,7 @@ const modeScreenEl = document.getElementById("modeScreen");
 const opponentScreenEl = document.getElementById("opponentScreen");
 const resultScreenEl = document.getElementById("resultScreen");
 const teamGridEl = document.getElementById("teamGrid");
-const soundOnBtnEl = document.getElementById("soundOnBtn");
+
 const opponentGridEl = document.getElementById("opponentGrid");
 const selectedTeamNameEl = document.getElementById("selectedTeamName");
 const tournamentBtnEl = document.getElementById("tournamentBtn");
