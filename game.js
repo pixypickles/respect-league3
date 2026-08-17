@@ -714,7 +714,7 @@ function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
 
   p.kickAnim=.22;
   p.cooldown=.18;
-  if(!isShot) sfx("pass");
+  if(!shot) sfx("pass");
 }
 
 function doPass(p, forcedTarget=null) {
@@ -857,8 +857,6 @@ function attemptTrap(p, dt) {
       ball.touchGrace=.18;
       ball.protectedTeam=p.team;
       p.possessionTime=0;
-      // Manual TRAP visibly moves the foot. AUTO TRAP is only ball control:
-      // absolutely no kick animation, otherwise repeated slow-ball control makes one leg flap.
       p.kickAnim = input.trap ? .16 : 0;
 
       if(slowLoose && !input.trap){
@@ -1962,79 +1960,67 @@ function dashTouchSkill(p) {
 }
 
 
-// ---------- Sound effects (v28 lightweight) ----------
-let audioCtx=null;
-let masterGain=null;
+// ---------- Sound effects (v29 file-based, low load) ----------
+const SFX_FILES={
+  pass:"sfx/pass.wav",
+  shot:"sfx/shot.wav",
+  super:"sfx/super.wav",
+  trap:"sfx/trap.wav",
+  dash:"sfx/dash.wav",
+  poke:"sfx/poke.wav",
+  goal:"sfx/goal.wav",
+  save:"sfx/save.wav"
+};
+const sfxPools={};
 const sfxLastAt={};
+let audioUnlocked=false;
 
-function ensureAudio(){
-  if(!audioCtx){
-    const AC=window.AudioContext||window.webkitAudioContext;
-    if(!AC) return;
-    audioCtx=new AC();
-    masterGain=audioCtx.createGain();
-    masterGain.gain.value=.16;
-    masterGain.connect(audioCtx.destination);
+function buildSfxPools(){
+  for(const [name,src] of Object.entries(SFX_FILES)){
+    const pool=[];
+    for(let i=0;i<2;i++){
+      const a=new Audio(src);
+      a.preload="auto";
+      a.volume=name==="goal"?.55:.42;
+      pool.push(a);
+    }
+    sfxPools[name]={pool,index:0};
   }
-  if(audioCtx.state==="suspended") audioCtx.resume();
 }
+buildSfxPools();
 
-function playTone(freq,dur=.045,type="sine",vol=.18,endFreq=null){
-  ensureAudio();
-  if(!audioCtx || !masterGain) return;
-
-  const now=audioCtx.currentTime;
-  const o=audioCtx.createOscillator();
-  const g=audioCtx.createGain();
-
-  o.type=type;
-  o.frequency.setValueAtTime(freq,now);
-  if(endFreq){
-    o.frequency.linearRampToValueAtTime(endFreq,now+dur);
-  }
-
-  g.gain.setValueAtTime(vol,now);
-  g.gain.linearRampToValueAtTime(0,now+dur);
-
-  o.connect(g);
-  g.connect(masterGain);
-  o.start(now);
-  o.stop(now+dur+.01);
+function unlockAudio(){
+  if(audioUnlocked) return;
+  audioUnlocked=true;
+  const a=new Audio("sfx/unlock.wav");
+  a.volume=.01;
+  const p=a.play();
+  if(p && p.catch) p.catch(()=>{});
 }
 
 function sfx(name){
-  // Throttle repeated sounds so ball-control loops can't spawn hundreds of audio nodes.
-  const now=performance.now();
-  const minGap={
-    pass:55,
-    shot:90,
-    super:120,
-    trap:90,
-    dash:100,
-    poke:90,
-    goal:500,
-    save:120
-  }[name] ?? 80;
+  if(!audioUnlocked) return;
+  const entry=sfxPools[name];
+  if(!entry) return;
 
-  if((sfxLastAt[name]||0)+minGap>now) return;
+  const now=performance.now();
+  const gap={pass:70,shot:100,super:140,trap:110,dash:120,poke:100,goal:600,save:140}[name]||90;
+  if((sfxLastAt[name]||0)+gap>now) return;
   sfxLastAt[name]=now;
 
-  if(name==="pass") playTone(170,.035,"triangle",.13,120);
-  else if(name==="shot") playTone(115,.060,"square",.17,72);
-  else if(name==="super") playTone(90,.085,"sawtooth",.19,48);
-  else if(name==="trap") playTone(220,.025,"triangle",.09,180);
-  else if(name==="dash") playTone(310,.045,"sine",.11,175);
-  else if(name==="poke") playTone(135,.035,"square",.10,95);
-  else if(name==="save") playTone(185,.040,"triangle",.11,125);
-  else if(name==="goal"){
-    playTone(440,.09,"square",.12,620);
-    // No setTimeout chain: one lightweight tone only.
-  }
+  const a=entry.pool[entry.index];
+  entry.index=(entry.index+1)%entry.pool.length;
+  try{
+    a.pause();
+    a.currentTime=0;
+    const p=a.play();
+    if(p && p.catch) p.catch(()=>{});
+  }catch(e){}
 }
 
-document.addEventListener("pointerdown",ensureAudio,{once:true});
-// ---------- Buttons ----------
+document.addEventListener("pointerdown",unlockAudio,{once:true});
 
+// ---------- Buttons ----------
 const passBtn=document.getElementById("passBtn");
 const trapBtn=document.getElementById("trapBtn");
 const shootBtn=document.getElementById("shootBtn");
