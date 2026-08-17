@@ -367,9 +367,9 @@ GitHub Pagesへそのまま配置して遊べます。
 - ゲームの操作・AI・ワンツー・DASH技などは維持
 - 1秒フリーズが消えるか確認するための診断版
 
-## v44 DEBUG
-- v43で診断文字が見えていなかったため、診断表示をゲームDOM外・画面左上固定に変更
-- 0.5秒ごとに `v44 LIVE | FPS xx | frames xx` を更新
-- requestAnimationFrameが止まればFPSが0になる
-- JavaScript例外は赤背景で表示
-- 音声は完全無効のまま
+## v45 DEBUG
+- 診断表示をコート上部中央（BALL LOOSEの下）へ移動
+- FPSに加えて frame / update / draw の各呼び出し回数を0.5秒ごとに表示
+- 表示例: `FPS 60 | F 30 U 30 D 30 | playing`
+- エラー発生時は赤表示
+- 音声は完全無効

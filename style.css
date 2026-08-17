@@ -477,11 +477,19 @@ body.practice-open #clock {
   touch-action: none !important;
 }
 
-#debugStatusV44{
- position:fixed;left:6px;top:6px;z-index:2147483647;
- max-width:72vw;padding:5px 7px;border-radius:6px;
- background:rgba(0,0,0,.72);color:#9cff9c;
- font:700 10px/1.25 monospace;white-space:pre-wrap;
+#debugV45{
+ position:absolute;
+ left:50%;
+ top:82px;
+ transform:translateX(-50%);
+ z-index:99999;
+ min-width:240px;
+ padding:5px 10px;
+ border-radius:7px;
+ background:rgba(0,0,0,.78);
+ color:#a8ff9e;
+ text-align:center;
+ font:800 11px/1.25 monospace;
  pointer-events:none;
 }
-#debugStatusV44.err{background:rgba(170,0,0,.94);color:white;font-size:11px;}
+#debugV45.err{background:rgba(180,0,0,.94);color:#fff;}

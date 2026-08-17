@@ -1,21 +1,3 @@
-
-const __dbg=document.getElementById("debugStatusV44");
-let __frames=0,__last=performance.now(),__fps=0;
-function __showErr(kind,e){
-  if(!__dbg)return;
-  __dbg.classList.add("err");
-  __dbg.textContent=kind+"\n"+(e&&e.stack?e.stack:String(e));
-}
-window.addEventListener("error",e=>__showErr("ERROR",e.error||e.message));
-window.addEventListener("unhandledrejection",e=>__showErr("PROMISE",e.reason));
-setInterval(()=>{
-  if(!__dbg || __dbg.classList.contains("err"))return;
-  const now=performance.now();
-  __fps=Math.round(__frames*1000/Math.max(1,now-__last));
-  __dbg.textContent="v44 LIVE | FPS "+__fps+" | frames "+__frames;
-  __frames=0;__last=now;
-},500);
-
 (() => {
 "use strict";
 
@@ -24,6 +6,31 @@ const ctx = canvas.getContext("2d");
 const scoreEl = document.getElementById("score");
 const clockEl = document.getElementById("clock");
 const msgEl = document.getElementById("message");
+const debugV45=document.getElementById("debugV45");
+let dbgFrames=0,dbgUpdates=0,dbgDraws=0,dbgLast=performance.now();
+
+function dbgError(kind,e){
+  debugV45.classList.add("err");
+  debugV45.textContent=kind+": "+(e&&e.stack?e.stack:String(e));
+}
+window.addEventListener("error",e=>dbgError("ERROR",e.error||e.message));
+window.addEventListener("unhandledrejection",e=>dbgError("PROMISE",e.reason));
+
+setInterval(()=>{
+  if(debugV45.classList.contains("err")) return;
+  const now=performance.now();
+  const secs=Math.max(.001,(now-dbgLast)/1000);
+  const fps=Math.round(dbgFrames/secs);
+  debugV45.textContent=
+    "FPS "+fps+
+    " | F "+dbgFrames+
+    " U "+dbgUpdates+
+    " D "+dbgDraws+
+    " | "+(typeof gamePhase!=="undefined"?gamePhase:"?");
+  dbgFrames=dbgUpdates=dbgDraws=0;
+  dbgLast=now;
+},500);
+
 const menuOverlayEl = document.getElementById("menuOverlay");
 const teamScreenEl = document.getElementById("teamScreen");
 const modeScreenEl = document.getElementById("modeScreen");
@@ -1640,6 +1647,7 @@ function goal(who) {
 }
 
 function update(dt) {
+  dbgUpdates++;
   if(gamePhase!=="match" && gamePhase!=="practice") return;
   if(gamePhase==="practice"){
     advanceTutorialIfNeeded();
@@ -1842,6 +1850,7 @@ function drawBall() {
 }
 
 function draw() {
+  dbgDraws++;
   ctx.clearRect(0,0,W,H);
   drawCourt();
 
@@ -1861,7 +1870,7 @@ function draw() {
 }
 
 function frame(now) {
-  __frames++;
+  dbgFrames++;
   const dt=Math.min(.033,(now-last)/1000);
   last=now;elapsed+=dt;
   update(dt);draw();
