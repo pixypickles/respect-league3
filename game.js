@@ -40,6 +40,8 @@ const input = {
   stickActive: false,
   trap: false,
   dash: false,
+  dashTimer: 0,
+  dashCooldown: 0,
   shootDown: false,
   shootStarted: 0
 };
@@ -328,10 +330,13 @@ function updateControlled(p,dt) {
 
   if(p.slide>0) return;
 
-  const sprint=input.dash?1.48:1;
-  const max=p.speed*sprint;
-  p.vx=lerp(p.vx,dx*max,clamp(dt*10,0,1));
-  p.vy=lerp(p.vy,dy*max,clamp(dt*10,0,1));
+  input.dashTimer=Math.max(0,input.dashTimer-dt);
+  input.dashCooldown=Math.max(0,input.dashCooldown-dt);
+  const bursting=input.dashTimer>0;
+  const max=p.speed*(bursting?2.12:1);
+  const response=bursting?18:10;
+  p.vx=lerp(p.vx,dx*max,clamp(dt*response,0,1));
+  p.vy=lerp(p.vy,dy*max,clamp(dt*response,0,1));
 
   if(ball.owner===p) {
     p.possessionTime+=dt;
@@ -358,43 +363,54 @@ function openSpaceScore(p,x,y) {
 
 function aiMoveOffBall(p,dt) {
   const attack=p.team==="blue"?1:-1;
+  const squad=teamPlayers(p.team).filter(q=>q.role!=="gk");
+  const idx=squad.indexOf(p);
   let tx=p.x,ty=p.y;
 
   if(ball.owner && ball.owner.team===p.team) {
     const o=ball.owner;
-    const side=Math.sign(p.y-H/2)||1;
-    const ahead = attack*(p.x-o.x);
-    // Move into passing lanes, not just straight toward goal.
-    tx = clamp(o.x + attack*(ahead>80?35:145), COURT.x+110, COURT.x+COURT.w-110);
-    ty = clamp(o.y + side*145, COURT.y+80, COURT.y+COURT.h-80);
-    // Search nearby candidate lane with more opponent distance.
-    let best={x:tx,y:ty,s:openSpaceScore(p,tx,ty)};
-    for(let i=0;i<5;i++){
-      const cx=clamp(tx+rand(-90,90),COURT.x+90,COURT.x+COURT.w-90);
-      const cy=clamp(ty+rand(-100,100),COURT.y+70,COURT.y+COURT.h-70);
-      const s=openSpaceScore(p,cx,cy);
-      if(s>best.s) best={x:cx,y:cy,s};
+    // Stable support lanes. CPU players spread around the ball instead of all chasing it.
+    const lanes=[-175,175,-70,90];
+    const depths=[95,95,215,-145];
+    const lane=lanes[idx%lanes.length];
+    const depth=depths[idx%depths.length];
+    tx=clamp(o.x+attack*depth,COURT.x+105,COURT.x+COURT.w-105);
+    ty=clamp(H/2+lane,COURT.y+70,COURT.y+COURT.h-70);
+
+    // If this player is the intended receiver, attack the passing lane.
+    if(ball.passTarget===p || p.receiveIntent) {
+      tx=clamp(p.x+attack*75,COURT.x+90,COURT.x+COURT.w-90);
+      ty=clamp(p.y+p.dirY*55,COURT.y+60,COURT.y+COURT.h-60);
     }
-    tx=best.x;ty=best.y;
   } else if(ball.owner && ball.owner.team!==p.team) {
-    // Defensive compact shape / pressure by nearest.
     const e=ball.owner;
-    const mates=teamPlayers(p.team).filter(q=>q.role!=="gk").sort((a,b)=>dist(a,e)-dist(b,e));
-    if(mates[0]===p){tx=e.x-attack*28;ty=e.y;}
-    else {
-      tx=lerp(p.team==="blue"?390:890,e.x,.28);
-      ty=lerp(p.y,e.y,.24);
+    const field=squad.slice().sort((a,b)=>dist(a,e)-dist(b,e));
+    const press=field[0]===p;
+    if(press) {
+      tx=e.x-attack*34; ty=e.y;
+    } else {
+      // Everyone else protects a different lane rather than collapsing onto the ball.
+      const defendX=p.team==="blue"?360:920;
+      const laneY=[190,360,530,285][idx%4];
+      tx=lerp(defendX,e.x,.18);
+      ty=lerp(laneY,e.y,.12);
     }
   } else {
-    tx=ball.x;ty=ball.y;
+    // Only the nearest player attacks a loose ball; others keep their spacing.
+    const nearest=squad.slice().sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
+    if(nearest===p){tx=ball.x;ty=ball.y;}
+    else {
+      tx=p.team==="blue"?430:850;
+      ty=[190,360,530,285][idx%4];
+    }
   }
 
   const n=norm(tx-p.x,ty-p.y);
-  p.dirX=n.x;p.dirY=n.y;
-  p.vx=lerp(p.vx,n.x*p.speed*.82,clamp(dt*5,0,1));
-  p.vy=lerp(p.vy,n.y*p.speed*.82,clamp(dt*5,0,1));
+  if(n.m>8){p.dirX=n.x;p.dirY=n.y;}
+  const desired=n.m<18?0:p.speed*.78;
+  p.vx=lerp(p.vx,n.x*desired,clamp(dt*5,0,1));
+  p.vy=lerp(p.vy,n.y*desired,clamp(dt*5,0,1));
 }
-
 function aiWithBall(p,dt) {
   p.possessionTime+=dt;
   p.aiTimer-=dt;
@@ -444,10 +460,14 @@ function updateAI(p,dt) {
   if(ball.owner===p) aiWithBall(p,dt);
   else aiMoveOffBall(p,dt);
 
-  // CPU defensive interventions
-  if(ball.owner && ball.owner.team!==p.team && dist(p,ball.owner)<52 && p.cooldown<=0) {
-    if(Math.random()<dt*2.1) defensivePoke(p);
-    else if(Math.random()<dt*.45) slide(p);
+  // Only the closest defender actively challenges, preventing CPU pile-ups.
+  if(ball.owner && ball.owner.team!==p.team && p.cooldown<=0) {
+    const e=ball.owner;
+    const nearest=teamPlayers(p.team).filter(q=>q.role!=="gk").sort((a,b)=>dist(a,e)-dist(b,e))[0];
+    if(nearest===p && dist(p,e)<52) {
+      if(Math.random()<dt*2.0) defensivePoke(p);
+      else if(Math.random()<dt*.35) slide(p);
+    }
   }
 }
 
@@ -522,7 +542,7 @@ function updatePhysics(dt) {
   for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
     const a=all[i],b=all[j], d=dist(a,b);
     if(d<PLAYER_R*1.75 && d>0){
-      const n=norm(a.x-b.x,a.y-b.y), push=(PLAYER_R*1.75-d)*.12;
+      const n=norm(a.x-b.x,a.y-b.y), push=(PLAYER_R*1.75-d)*.28;
       a.x+=n.x*push;b.x-=n.x*push;a.y+=n.y*push;b.y-=n.y*push;
     }
   }
@@ -550,9 +570,13 @@ function updatePhysics(dt) {
     const c=controlled();
     const runMag=Math.hypot(input.sx,input.sy);
     let dx=runMag>.18?input.sx:c.dirX, dy=runMag>.18?input.sy:c.dirY;
-    const targetX=c.x+dx*150, targetY=c.y+dy*150;
+    // Put the return ball well ahead of the player's running direction.
+    // The short burst dash is intended to help the player catch up and fine-tune the run.
+    const lead=255;
+    const targetX=clamp(c.x+dx*lead,COURT.x+45,COURT.x+COURT.w-45);
+    const targetY=clamp(c.y+dy*lead,COURT.y+45,COURT.y+COURT.h-45);
     receiver.receiveIntent=false;
-    kickBall(receiver,targetX-receiver.x,targetY-receiver.y,440,30,false,c);
+    kickBall(receiver,targetX-receiver.x,targetY-receiver.y,465,26,false,c);
     ball.returnRequested=false;
     showMessage("RETURN!",.4);
   }
@@ -632,9 +656,7 @@ function drawCourt() {
 function drawPlayer(p) {
   ctx.save();
   ctx.translate(p.x,p.y);
-  const ang=Math.atan2(p.dirY,p.dirX);
-  ctx.rotate(ang);
-
+  // Character artwork stays upright on screen. Movement direction does not rotate the head/body.
   if(p.slide>0) {
     ctx.rotate(-.15);
     ctx.fillStyle=p.team==="blue"?BLUE:RED;
@@ -667,7 +689,10 @@ function drawPlayer(p) {
   // head no hair, dot eyes
   ctx.fillStyle=SKIN;ctx.beginPath();ctx.arc(0,-26,13,0,Math.PI*2);ctx.fill();
   ctx.fillStyle="#111827";
-  ctx.beginPath();ctx.arc(6,-29,1.7,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();
+  ctx.arc(-4,-30,1.7,0,Math.PI*2);
+  ctx.arc(4,-30,1.7,0,Math.PI*2);
+  ctx.fill();
 
   if(p.controlled) {
     ctx.strokeStyle="#fde047";ctx.lineWidth=4;
@@ -760,7 +785,17 @@ function bindHold(btn, key) {
   btn.addEventListener("pointerup",up);btn.addEventListener("pointercancel",up);
 }
 bindHold(trapBtn,"trap");
-bindHold(dashBtn,"dash");
+
+// DASH is a quick burst, not a hold-to-sprint button.
+dashBtn.addEventListener("pointerdown",e=>{
+  e.preventDefault();
+  if(input.dashCooldown<=0){
+    input.dashTimer=.19;
+    input.dashCooldown=.34;
+    dashBtn.classList.add("active");
+    setTimeout(()=>dashBtn.classList.remove("active"),150);
+  }
+});
 
 passBtn.addEventListener("pointerdown",e=>{
   e.preventDefault();
@@ -802,14 +837,13 @@ const keys=new Set();
 addEventListener("keydown",e=>{
   keys.add(e.code);
   if(e.code==="KeyZ") input.trap=true;
-  if(e.code==="KeyX") input.dash=true;
+  if(e.code==="KeyX"&&!e.repeat && input.dashCooldown<=0){input.dashTimer=.19;input.dashCooldown=.34;}
   if(e.code==="KeyA"&&!e.repeat) passBtn.dispatchEvent(new PointerEvent("pointerdown",{pointerId:99}));
   if(e.code==="KeyS"&&!e.repeat){input.shootDown=true;input.shootStarted=performance.now();}
 });
 addEventListener("keyup",e=>{
   keys.delete(e.code);
   if(e.code==="KeyZ")input.trap=false;
-  if(e.code==="KeyX")input.dash=false;
   if(e.code==="KeyS")releaseShoot();
 });
 setInterval(()=>{

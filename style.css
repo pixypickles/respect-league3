@@ -116,36 +116,38 @@ body {
 #buttons {
   right: max(10px, env(safe-area-inset-right));
   bottom: max(10px, env(safe-area-inset-bottom));
-  width: min(39vw, 360px);
-  height: min(34vw, 280px);
+  width: min(34vw, 315px);
+  height: min(29vw, 235px);
 }
 
 .game-btn {
   position: absolute;
-  width: min(11vw, 92px);
-  height: min(11vw, 92px);
-  min-width: 58px;
-  min-height: 58px;
+  width: min(9.2vw, 76px);
+  height: min(9.2vw, 76px);
+  min-width: 52px;
+  min-height: 52px;
   border-radius: 50%;
-  border: 3px solid rgba(255,255,255,.64);
+  border: 2px solid rgba(255,255,255,.48);
   color: white;
   font-weight: 900;
   font-size: clamp(11px, 1.8vw, 18px);
   text-shadow: 0 2px 3px rgba(0,0,0,.45);
-  box-shadow: 0 5px 0 rgba(0,0,0,.24), inset 0 2px 8px rgba(255,255,255,.12);
+  box-shadow: 0 3px 0 rgba(0,0,0,.15), inset 0 2px 8px rgba(255,255,255,.08);
+  opacity: .58;
   outline: 0;
 }
 
 .game-btn:active,
 .game-btn.active {
+  opacity: .88;
   transform: translateY(3px) scale(.96);
   box-shadow: 0 2px 0 rgba(0,0,0,.24), inset 0 3px 9px rgba(0,0,0,.18);
 }
 
-.pass  { left: 0;  top: 44%; background: rgba(59,130,246,.78); }
-.trap  { left: 35%; top: 8%; background: rgba(34,197,94,.82); }
-.shoot { right: 0; top: 40%; background: rgba(239,68,68,.82); }
-.dash  { left: 38%; bottom: 0; background: rgba(245,158,11,.82); }
+.pass  { left: 0;  top: 46%; background: rgba(59,130,246,.72); }
+.trap  { left: 38%; top: 3%; background: rgba(34,197,94,.72); }
+.shoot { right: 0; top: 43%; background: rgba(239,68,68,.72); }
+.dash  { left: 40%; bottom: 0; background: rgba(245,158,11,.72); }
 
 #message {
   position: absolute;
