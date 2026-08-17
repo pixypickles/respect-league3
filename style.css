@@ -489,3 +489,12 @@ body.practice-open #clock {
 #stickKnob {
   touch-action: none !important;
 }
+
+
+/* v40: display-only fit. game.js is exactly v37. */
+@media (orientation: landscape) and (max-height: 600px) {
+  #game {
+    width: 100%;
+    height: calc(100% - 14px);
+  }
+}

@@ -35,7 +35,7 @@ const tournamentProgressEl = document.getElementById("tournamentProgress");
 const resultActionsEl = document.getElementById("resultActions");
 
 const W = 1280, H = 720;
-const COURT = { x: 205, y: 50, w: 870, h: 596 };
+const COURT = { x: 205, y: 62, w: 870, h: 596 };
 const GOAL_H = 210;
 const PLAYER_R = 20;
 const BALL_R = 9;
