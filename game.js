@@ -1850,19 +1850,66 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
-// ---------- Cross D-pad / multi-touch ----------
-const dpadState={up:false,down:false,left:false,right:false};
-const activeDpadPointers=new Map();
+// ---------- Touch / pointer stick (v37 sticky diagonal) ----------
+const stickZone=document.getElementById("stickZone");
+const stickBase=document.getElementById("stickBase");
+const stickKnob=document.getElementById("stickKnob");
+let stickPointer=null;
 
-function refreshDpadInput(){
-  const x=(dpadState.right?1:0)-(dpadState.left?1:0);
-  const y=(dpadState.down?1:0)-(dpadState.up?1:0);
+let stickyX=0;
+let stickyY=0;
+let stickyXUntil=0;
+let stickyYUntil=0;
 
-  // Two directions remain simultaneous: left+down => (-.707,+.707).
+function updateStick(clientX,clientY) {
+  const r=stickBase.getBoundingClientRect();
+  const cx=r.left+r.width/2;
+  const cy=r.top+r.height/2;
+
+  let dx=clientX-cx;
+  let dy=clientY-cy;
+  const max=r.width*.37;
+
+  const rawMag=Math.hypot(dx,dy);
+  const n=norm(dx,dy);
+  const m=Math.min(max,rawMag);
+
+  dx=n.x*m;
+  dy=n.y*m;
+
+  const rawX=dx/max;
+  const rawY=dy/max;
+
+  // Independent wide axis zones make diagonals easier than the old analog vector.
+  const threshold=.24;
+  let x=Math.abs(rawX)>threshold ? Math.sign(rawX) : 0;
+  let y=Math.abs(rawY)>threshold ? Math.sign(rawY) : 0;
+
+  const now=performance.now();
+
+  if(x!==0){
+    stickyX=x;
+    stickyXUntil=now+220;
+  }
+  if(y!==0){
+    stickyY=y;
+    stickyYUntil=now+220;
+  }
+
+  // Preserve the previous axis briefly while the finger slides.
+  // DOWN -> slide RIGHT = DOWN+RIGHT.
+  if(x===0 && now<stickyXUntil) x=stickyX;
+  if(y===0 && now<stickyYUntil) y=stickyY;
+
+  if(rawMag<max*.16){
+    x=0;
+    y=0;
+  }
+
   if(x!==0 || y!==0){
-    const n=norm(x,y);
-    input.sx=n.x;
-    input.sy=n.y;
+    const dir=norm(x,y);
+    input.sx=dir.x;
+    input.sy=dir.y;
     input.stickActive=true;
   }else{
     input.sx=0;
@@ -1870,69 +1917,40 @@ function refreshDpadInput(){
     input.stickActive=false;
   }
 
-  dpadUp.classList.toggle("active",dpadState.up);
-  dpadDown.classList.toggle("active",dpadState.down);
-  dpadLeft.classList.toggle("active",dpadState.left);
-  dpadRight.classList.toggle("active",dpadState.right);
+  stickKnob.style.transform=`translate(${dx}px,${dy}px)`;
 }
 
-function clearPointerDirections(pointerId){
-  activeDpadPointers.delete(pointerId);
-
-  // Rebuild state from every remaining finger.
-  dpadState.up=dpadState.down=dpadState.left=dpadState.right=false;
-  for(const dirs of activeDpadPointers.values()){
-    for(const d of dirs) dpadState[d]=true;
-  }
-  refreshDpadInput();
+function releaseStick(){
+  stickPointer=null;
+  input.sx=0;
+  input.sy=0;
+  input.stickActive=false;
+  stickyX=0;
+  stickyY=0;
+  stickyXUntil=0;
+  stickyYUntil=0;
+  stickKnob.style.transform="translate(0,0)";
 }
 
-function directionsAtPoint(clientX,clientY){
-  const r=stickZone.getBoundingClientRect();
-  const x=(clientX-r.left)/Math.max(1,r.width);
-  const y=(clientY-r.top)/Math.max(1,r.height);
-
-  // Deliberately generous hit zones.
-  // They overlap so one finger near a corner can also create a diagonal.
-  const dirs=[];
-  if(x<.48) dirs.push("left");
-  if(x>.52) dirs.push("right");
-  if(y<.48) dirs.push("up");
-  if(y>.52) dirs.push("down");
-
-  // Dead-center only is neutral; outside center is usually a direction.
-  return dirs;
-}
-
-function setPointerDirections(pointerId,clientX,clientY){
-  activeDpadPointers.set(pointerId,directionsAtPoint(clientX,clientY));
-
-  dpadState.up=dpadState.down=dpadState.left=dpadState.right=false;
-  for(const dirs of activeDpadPointers.values()){
-    for(const d of dirs) dpadState[d]=true;
-  }
-  refreshDpadInput();
-}
-
-// Listen on the whole D-pad zone so the effective hit area is larger than visible buttons.
 stickZone.addEventListener("pointerdown",e=>{
   e.preventDefault();
+  stickPointer=e.pointerId;
+  input.stickActive=true;
   try{stickZone.setPointerCapture(e.pointerId);}catch(_){}
-  setPointerDirections(e.pointerId,e.clientX,e.clientY);
+  updateStick(e.clientX,e.clientY);
 });
 
 stickZone.addEventListener("pointermove",e=>{
-  if(activeDpadPointers.has(e.pointerId)){
+  if(e.pointerId===stickPointer){
     e.preventDefault();
-    setPointerDirections(e.pointerId,e.clientX,e.clientY);
+    updateStick(e.clientX,e.clientY);
   }
 });
 
 stickZone.addEventListener("pointerup",e=>{
-  e.preventDefault();
-  clearPointerDirections(e.pointerId);
+  if(e.pointerId===stickPointer) releaseStick();
 });
-stickZone.addEventListener("pointercancel",e=>clearPointerDirections(e.pointerId));
+stickZone.addEventListener("pointercancel",releaseStick);
 
 // ---------- Buttons ----------
 const passBtn=document.getElementById("passBtn");
