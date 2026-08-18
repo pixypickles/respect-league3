@@ -646,24 +646,9 @@ function currentTutorial(){
   return arr[Math.min(tutorialIndex,arr.length-1)];
 }
 
-function refreshTutorialHud(){
-  const t=currentTutorial();
-  tutorialStepEl.textContent=t.step;
-  tutorialTextEl.textContent=t.text;
-}
+function refreshTutorialHud(){}
 
-function advanceTutorialIfNeeded(){
-  if(gamePhase!=="practice") return;
-  const t=currentTutorial();
-  if(t.done && t.done()){
-    const arr=practiceType==="partner"?PARTNER_TUTORIAL:SOLO_TUTORIAL;
-    if(tutorialIndex<arr.length-1){
-      tutorialIndex++;
-      refreshTutorialHud();
-      showMessage("OK!",.35);
-    }
-  }
-}
+function advanceTutorialIfNeeded(){}
 
 function setupPracticePlayers(type){
   const b=teams.blue, r=teams.red;
