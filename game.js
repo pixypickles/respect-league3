@@ -1,4 +1,4 @@
-const GAME_VERSION="v79";
+const GAME_VERSION="v80";
 (() => {
 "use strict";
 
@@ -331,6 +331,8 @@ function prepareMatch(){
   input.comboUntil=0;
   input.lastDashTapAt=-9999;
   input.trapPressBuffer=0;
+  input.trickChainUntil=0;
+  input.lastTrickType=null;
   input.shootDown=false;
   input.shootBallLock=false;
   if(input.pendingShotTimer!==null){
@@ -775,7 +777,9 @@ const input = {
   pendingShotPlayer: null,
   lastDashTapAt: -9999,
   comboStage: 0,
-  comboUntil: 0
+  comboUntil: 0,
+  trickChainUntil: 0,
+  lastTrickType: null
 };
 
 const teams = { blue: [], red: [] };
@@ -2799,6 +2803,16 @@ function sfx(name){ return; }
 
 
 
+
+function trickChainActive(){
+  return performance.now()<input.trickChainUntil;
+}
+
+function openTrickChain(type, ms=520){
+  input.lastTrickType=type;
+  input.trickChainUntil=performance.now()+ms;
+}
+
 function techniqueBallReservedFor(p){
   if(ball.nutmegTimer>0 && ball.passFrom){
     return p!==ball.passFrom;
@@ -2834,7 +2848,9 @@ function trickGhostPair(a,b){
 }
 
 function tryDoubleTouch(attacker){
+  const chainedFromNutmeg = trickChainActive() && input.lastTrickType==="nutmeg";
   if(!attacker || attacker.role==="gk" || ball.owner!==attacker || attacker.stagger>0) return false;
+  if(attacker.cooldown>0 && !chainedFromNutmeg) return false;
 
   const enemies=opponents(attacker.team)
     .filter(e=>e.role!=="gk" && e.stagger<=0)
@@ -2872,6 +2888,10 @@ function tryDoubleTouch(attacker){
   ball.owner=attacker;
   ball.lastTouch=attacker;
   ball.trickProtectTimer=.48;
+  // Preserve protection seamlessly if chained from nutmeg.
+  if(ball.nutmegTimer>0 && ball.nutmegTeam===attacker.team){
+    ball.trickProtectTimer=Math.max(ball.trickProtectTimer,ball.nutmegTimer+.08);
+  }
   ball.trickProtectTeam=attacker.team;
   ball.trickAttacker=attacker;
   ball.trickTarget=defender;
@@ -2880,6 +2900,8 @@ function tryDoubleTouch(attacker){
 
   input.dashTimer=.22;
   input.dashCooldown=.26;
+  openTrickChain("double",560);
+  attacker.cooldown=.04;
   showMessage("DOUBLE TOUCH!",.34);
   return true;
 }
@@ -2894,7 +2916,8 @@ function defenderBackDashGuarding(defender, attacker){
 }
 
 function tryNutmeg(attacker){
-  if(!attacker || attacker.role==="gk" || attacker.cooldown>0) return false;
+  const chainedFromDouble = trickChainActive() && input.lastTrickType==="double";
+  if(!attacker || attacker.role==="gk" || (attacker.cooldown>0 && !chainedFromDouble)) return false;
 
   const hasBall=ball.owner===attacker;
   if(!hasBall) return false;
@@ -2934,6 +2957,10 @@ function tryNutmeg(attacker){
   ball.lastTouch=attacker;
   ball.passFrom=attacker;
   ball.nutmegTimer=.58;
+  // Preserve protection seamlessly if chained from double touch.
+  if(ball.trickProtectTimer>0 && ball.trickProtectTeam===attacker.team){
+    ball.nutmegTimer=Math.max(ball.nutmegTimer,ball.trickProtectTimer+.08);
+  }
   ball.nutmegTeam=attacker.team;
   ball.nutmegTarget=defender;
 
@@ -2958,6 +2985,8 @@ function tryNutmeg(attacker){
   attacker.dirY=face.y;
   attacker.cooldown=.12;
 
+  openTrickChain("nutmeg",560);
+  attacker.cooldown=.04;
   showMessage("NUTMEG!",.34);
   return true;
 }
@@ -3015,13 +3044,17 @@ trapBtn.addEventListener("pointerdown",e=>{
   const now=performance.now();
 
   // TRAP -> TRAP -> DASH : prepare double touch.
-  if(ball.owner===c){
+  const canPrepareDouble =
+    ball.owner===c ||
+    (trickChainActive() && input.lastTrickType==="nutmeg" && ball.passFrom===c);
+
+  if(canPrepareDouble){
     if(input.comboStage===1 && now<input.comboUntil){
       input.comboStage=2;
-      input.comboUntil=now+460;
+      input.comboUntil=now+520;
     }else{
       input.comboStage=1;
-      input.comboUntil=now+460;
+      input.comboUntil=now+520;
     }
   }else{
     input.comboStage=0;
@@ -3050,17 +3083,30 @@ dashBtn.addEventListener("pointerdown",e=>{
   e.preventDefault();
   const c=controlled();
   const now=performance.now();
-  const isDoubleDash=(now-input.lastDashTapAt)<=420;
+  const isDoubleDash=(now-input.lastDashTapAt)<=(trickChainActive()?520:420);
   input.lastDashTapAt=now;
 
   // TRAP -> TRAP -> DASH : final input triggers double touch.
-  if(input.comboStage===2 && now<input.comboUntil && ball.owner===c){
-    input.comboStage=0;
-    input.comboUntil=0;
-    if(tryDoubleTouch(c)){
-      dashBtn.classList.add("active");
-      setTimeout(()=>dashBtn.classList.remove("active"),150);
-      return;
+  if(input.comboStage===2 && now<input.comboUntil){
+    // For nutmeg -> double touch, let the attacker collect the technique ball instantly
+    // when already close enough, so there is no dead frame between moves.
+    if(!ball.owner && trickChainActive() && input.lastTrickType==="nutmeg" &&
+       ball.passFrom===c && dist(c,ball)<76 && ball.z<26){
+      ball.owner=c;
+      ball.vx=ball.vy=ball.vz=0;
+      ball.z=0;
+      ball.lastTouch=c;
+      c.possessionTime=0;
+    }
+
+    if(ball.owner===c){
+      input.comboStage=0;
+      input.comboUntil=0;
+      if(tryDoubleTouch(c)){
+        dashBtn.classList.add("active");
+        setTimeout(()=>dashBtn.classList.remove("active"),150);
+        return;
+      }
     }
   }else if(now>=input.comboUntil){
     input.comboStage=0;
