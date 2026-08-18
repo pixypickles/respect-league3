@@ -1,4 +1,4 @@
-const GAME_VERSION="v69";
+const GAME_VERSION="v71";
 (() => {
 "use strict";
 
@@ -41,8 +41,8 @@ const soloPracticeBtnEl = document.getElementById("soloPracticeBtn");
 const partnerPracticeBtnEl = document.getElementById("partnerPracticeBtn");
 const practiceBackBtnEl = document.getElementById("practiceBackBtn");
 const tutorialHudEl = document.getElementById("tutorialHud");
-const tutorialStepEl = document.getElementById("tutorialStep");
-const tutorialTextEl = document.getElementById("tutorialText");
+const tutorialStepEl = null;
+const tutorialTextEl = null;
 const tutorialExitBtnEl = document.getElementById("tutorialExitBtn");
 const modeBackBtnEl = document.getElementById("modeBackBtn");
 const opponentBackBtnEl = document.getElementById("opponentBackBtn");
@@ -646,9 +646,9 @@ function currentTutorial(){
   return arr[Math.min(tutorialIndex,arr.length-1)];
 }
 
-function refreshTutorialHud(){}
+function refreshTutorialHud(){ return; }
 
-function advanceTutorialIfNeeded(){}
+function advanceTutorialIfNeeded(){ return; }
 
 function setupPracticePlayers(type){
   const b=teams.blue, r=teams.red;
@@ -713,8 +713,6 @@ function startPractice(type){
   gameMode="practice";
   gamePhase="practice";
   practiceType=type;
-  tutorialIndex=0;
-  tutorialTimer=0;
   tutorialFlags={};
   scoreBlue=scoreRed=0;
   opponentTeamId=TEAM_DEFS.find(t=>t.id!==selectedTeamId).id;
@@ -725,7 +723,6 @@ function startPractice(type){
     : `${teamDef(selectedTeamId).name}  ひとり練習`;
   tutorialHudEl.classList.remove("hidden");
   document.body.classList.add("practice-open");
-  refreshTutorialHud();
   hideMenu();
 }
 
@@ -2182,8 +2179,7 @@ function goal(who) {
 function update(dt) {
   if(gamePhase!=="match" && gamePhase!=="practice") return;
   if(gamePhase==="practice"){
-    advanceTutorialIfNeeded();
-  }
+    }
   if(messageTimer>0){messageTimer-=dt;if(messageTimer<=0)msgEl.style.opacity="0";}
   if(goalPause>0) {
     goalPause-=dt;
