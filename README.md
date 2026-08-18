@@ -719,3 +719,9 @@ GitHub Pagesへそのまま配置して遊べます。
 - deathmatchBtnEl のDOM参照位置も確認
 - game.js?v=93 でキャッシュ回避
 - 黄色いv93表示は維持
+
+## v94 bindMenuTapエラー完全修正
+- v93のファイル末尾に残っていた余分な `bindMenuTap(deathmatchBtnEl,startDeathmatch);` を削除
+- deathmatchBtnの登録をbindMenuTap定義直後のIIFE内1箇所だけに統一
+- game.js?v=94でキャッシュ回避
+- 黄色いv94表示を維持

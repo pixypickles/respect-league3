@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v93";
+const GAME_VERSION="v94";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -4117,8 +4117,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v93";
+  if(v) v.textContent="v94";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v93";
-});bindMenuTap(deathmatchBtnEl,startDeathmatch);
-
+  if(b) b.textContent="v94";
+});
