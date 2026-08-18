@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v104";
+const GAME_VERSION="v105";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -187,7 +187,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v104: selected team + 3 random opponents = 4-team single round robin.
+  // v105: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -389,6 +389,9 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
+  // v105: prevent the same touch from falling through into the newly shown screen.
+  menuTransitionLockUntil=performance.now()+360;
+
   for(const el of [teamScreenEl,modeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl]){
     el.classList.add("hidden");
   }
@@ -725,7 +728,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v104: vertical hazard lines only, evenly spaced.
+  // v105: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -1163,7 +1166,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v104: forward is always the attacking direction, never toward own goal.
+  // v105: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -2218,7 +2221,7 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
-  // v104: TRAP must not vacuum a loose ball from a distance.
+  // v105: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -2269,7 +2272,7 @@ function attemptTrap(p, dt) {
     const slowLoose = speed < 115 && ball.z < 14 && !ball.passTarget && p.autoControlTimer<=0;
 
     if(input.trap || input.trapPressBuffer>0 || (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v104: never stop/snap a ball unless it is genuinely at the feet.
+      // v105: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -2316,7 +2319,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v104: CPU also needs real contact before claiming/stopping the ball.
+      // v105: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -2788,7 +2791,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v104: any AI field player may shoot when the chance is clearly good.
+  // v105: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3180,7 +3183,7 @@ function updateGK(p,dt) {
 }
 
 function updatePhysics(dt) {
-  // v104: in DEATHMATCH a loose ball must physically reach the feet.
+  // v105: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -3775,7 +3778,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v104: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v105: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -4912,6 +4915,7 @@ bindMenuTap(normalTeamBtnEl,()=>{
   pendingSelectedTeamId=null;
   selectedTeamNameEl.textContent=teamDef(selectedTeamId).name;
   refreshLeagueButton();
+  menuTransitionLockUntil=performance.now()+420;
   setMenuScreen(modeScreenEl);
 });
 bindMenuTap(trainedTeamBtnEl,()=>{
@@ -4920,6 +4924,7 @@ bindMenuTap(trainedTeamBtnEl,()=>{
   pendingSelectedTeamId=null;
   selectedTeamNameEl.textContent=teamDef(selectedTeamId).name;
   refreshLeagueButton();
+  menuTransitionLockUntil=performance.now()+420;
   setMenuScreen(modeScreenEl);
 });
 bindMenuTap(trainedChoiceBackBtnEl,()=>{
@@ -4928,8 +4933,10 @@ bindMenuTap(trainedChoiceBackBtnEl,()=>{
   setMenuScreen(teamScreenEl);
 });
 let practiceMenuTapLock=false;
+let menuTransitionLockUntil=0;
 function openPracticeMenu(e){
   if(e && e.preventDefault) e.preventDefault();
+  if(performance.now()<menuTransitionLockUntil) return;
   if(practiceMenuTapLock) return;
   practiceMenuTapLock=true;
   setMenuScreen(practiceScreenEl);
@@ -4941,10 +4948,11 @@ function bindMenuTap(el,fn){
   let locked=false;
   const run=(e)=>{
     if(e && e.preventDefault) e.preventDefault();
+    if(performance.now()<menuTransitionLockUntil) return;
     if(locked) return;
     locked=true;
     fn();
-    setTimeout(()=>{locked=false;},180);
+    setTimeout(()=>{locked=false;},220);
   };
   el.addEventListener("click",run);
   el.addEventListener("pointerup",run);
@@ -4959,7 +4967,10 @@ bindMenuTap(partnerPracticeBtnEl,()=>startPractice("partner"));
 bindMenuTap(practiceBackBtnEl,()=>setMenuScreen(modeScreenEl));
 bindMenuTap(controlsBtnEl,()=>setMenuScreen(controlsScreenEl));
 bindMenuTap(controlsBackBtnEl,()=>setMenuScreen(modeScreenEl));
-tutorialExitBtnEl.addEventListener("click",endPractice);
+tutorialExitBtnEl.addEventListener("click",()=>{
+  if(performance.now()<menuTransitionLockUntil) return;
+  endPractice();
+});
 
 bindMenuTap(bracketBtnEl,startDayCup);
 
@@ -4968,8 +4979,14 @@ bindMenuTap(freeMatchBtnEl,()=>{
   renderOpponentSelection();
   setMenuScreen(opponentScreenEl);
 });
-modeBackBtnEl.addEventListener("click",()=>setMenuScreen(teamScreenEl));
-opponentBackBtnEl.addEventListener("click",()=>setMenuScreen(modeScreenEl));
+modeBackBtnEl.addEventListener("click",()=>{
+  if(performance.now()<menuTransitionLockUntil) return;
+  setMenuScreen(teamScreenEl);
+});
+opponentBackBtnEl.addEventListener("click",()=>{
+  if(performance.now()<menuTransitionLockUntil) return;
+  setMenuScreen(modeScreenEl);
+});
 
 renderTeamSelection();
 selectedTeamNameEl.textContent=teamDef(selectedTeamId).name;
@@ -4989,7 +5006,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v104";
+  if(v) v.textContent="v105";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v104";
+  if(b) b.textContent="v105";
 });
