@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v97";
+const GAME_VERSION="v98";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -537,7 +537,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v97: vertical hazard lines only, evenly spaced.
+  // v98: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -584,7 +584,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v97: forward is always the attacking direction, never toward own goal.
+  // v98: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -1594,7 +1594,7 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
-  // v97: TRAP must not vacuum a loose ball from a distance.
+  // v98: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -2156,7 +2156,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v97: any AI field player may shoot when the chance is clearly good.
+  // v98: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -2543,6 +2543,11 @@ function updateGK(p,dt) {
 }
 
 function updatePhysics(dt) {
+  // v98: in DEATHMATCH a loose ball must physically reach the feet.
+  // Disable the normal generous auto-trap/auto-pickup radius that caused
+  // the ball to jump from a distant position to the controlled player.
+  const deathmatchLoosePickupRadius=18;
+
   input.actionPriorityTimer=Math.max(0,input.actionPriorityTimer-dt);
   input.trapPressBuffer=Math.max(0,input.trapPressBuffer-dt);
   input.postKickNoAutoTrap=Math.max(0,input.postKickNoAutoTrap-dt);
@@ -2714,7 +2719,6 @@ function updatePhysics(dt) {
 
   handleWallsAndGoals();
 }
-
 function handleWallsAndGoals() {
   const goalTop=H/2-GOAL_H/2, goalBot=H/2+GOAL_H/2;
 
@@ -3127,7 +3131,7 @@ function drawPlayer(p) {
   if(deathmatchState.active &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v97: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v98: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -4313,7 +4317,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v97";
+  if(v) v.textContent="v98";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v97";
+  if(b) b.textContent="v98";
 });
