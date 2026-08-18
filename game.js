@@ -1,4 +1,4 @@
-const GAME_VERSION="v80";
+const GAME_VERSION="v81";
 (() => {
 "use strict";
 
@@ -333,6 +333,7 @@ function prepareMatch(){
   input.trapPressBuffer=0;
   input.trickChainUntil=0;
   input.lastTrickType=null;
+  clearSkillIntent();
   input.shootDown=false;
   input.shootBallLock=false;
   if(input.pendingShotTimer!==null){
@@ -779,7 +780,9 @@ const input = {
   comboStage: 0,
   comboUntil: 0,
   trickChainUntil: 0,
-  lastTrickType: null
+  lastTrickType: null,
+  skillIntentUntil: 0,
+  skillIntentAttacker: null
 };
 
 const teams = { blue: [], red: [] };
@@ -1007,7 +1010,21 @@ function bestPassTarget(p, inputDir=null) {
 }
 
 
+
+function teammateShouldYieldToControlled(p){
+  if(!p || p.controlled || p.team!=="blue") return false;
+  const c=controlled();
+  if(!c) return false;
+
+  // Never let a blue CPU scoop a ball that is effectively still under the
+  // controlled player's immediate dribble/technique influence.
+  if(ball.lastTouch===c && dist(c,ball)<76 && ball.touchGrace>0) return true;
+  if(skillIntentActive() && input.skillIntentAttacker===c) return true;
+  return false;
+}
+
 function nearbyLooseBallFor(p, radius=84) {
+  if(teammateShouldYieldToControlled(p)) return false;
   if(techniqueBallReservedFor(p)) return false;
   if(nutmegProtectedAgainst(p) || trickProtectedAgainst(p)) return false;
   return !ball.owner && ball.z<34 && dist(p,ball)<=radius;
@@ -1322,6 +1339,8 @@ function attemptTrap(p, dt) {
   }
 
   if(!p.controlled) {
+    if(teammateShouldYieldToControlled(p)) return false;
+
     // Only one CPU from each team is allowed to contest a loose ball.
     const squad=teamPlayers(p.team).filter(q=>q.role!=="gk" && !q.controlled);
     const nearest=squad.slice().sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
@@ -1390,6 +1409,8 @@ function stealProtectedAgainst(p){
 }
 
 function shortTrapSteal(actor) {
+  if(skillIntentProtectedAgainst(actor)) return false;
+
   if(techniqueBallReservedFor(actor)) return false;
 
   if(trickProtectedAgainst(actor)) return false;
@@ -1440,6 +1461,8 @@ function shortTrapSteal(actor) {
 }
 
 function defensivePoke(actor) {
+  if(skillIntentProtectedAgainst(actor)) return false;
+
   if(techniqueBallReservedFor(actor)) return false;
 
   if(trickProtectedAgainst(actor)) return false;
@@ -1477,6 +1500,8 @@ function slide(actor) {
 
 
 function shoulderCharge(actor) {
+  if(skillIntentProtectedAgainst(actor)) return false;
+
   if(trickProtectedAgainst(actor)) return false;
 
   // Once a nutmeg has started, defenders cannot interrupt it with a shoulder.
@@ -1532,6 +1557,8 @@ function shoulderCharge(actor) {
 }
 
 function checkSlideSteal(p) {
+  if(skillIntentProtectedAgainst(p)) return;
+
   if(techniqueBallReservedFor(p)) return;
 
   if(trickProtectedAgainst(p)) return;
@@ -1552,6 +1579,9 @@ function checkSlideSteal(p) {
 }
 
 function offBallAction(team, type) {
+  if(skillIntentActive() && input.skillIntentAttacker &&
+     input.skillIntentAttacker.team!==team) return;
+
   if(ball.trickProtectTimer>0 && ball.trickProtectTeam && ball.trickProtectTeam!==team) return;
 
   if(ball.nutmegTimer>0 && ball.nutmegTeam && ball.nutmegTeam!==team) return;
@@ -1608,18 +1638,15 @@ function updateControlled(p,dt) {
 
   if(ball.owner===p) {
     p.possessionTime+=dt;
-    // Core mechanic: holding trap is required to keep dribbling.
-    if(input.trap || p.autoControlTimer>0 || (input.shootDown && input.shootBallLock)) {
-      const n=norm(p.dirX,p.dirY);
-      ball.x=p.x+n.x*18; ball.y=p.y+20+n.y*6; ball.z=0;
-      ball.vx=p.vx; ball.vy=p.vy;
-    } else if(p.possessionTime>.10) {
-      const n=norm(p.dirX,p.dirY);
-      ball.owner=null;
-      ball.x=p.x+n.x*30; ball.y=p.y+n.y*30;
-      ball.vx=p.vx*.78+n.x*70; ball.vy=p.vy*.78+n.y*70; ball.vz=10;
-      showMessage("BALL LOOSE",.28);
-    }
+
+    // v81: once possession is secured, normal movement keeps the ball automatically.
+    // TRAP is for receiving/stopping and technique inputs, not for maintaining dribble.
+    const n=norm(p.dirX,p.dirY);
+    ball.x=p.x+n.x*18;
+    ball.y=p.y+20+n.y*6;
+    ball.z=0;
+    ball.vx=p.vx;
+    ball.vy=p.vy;
   }
 }
 
@@ -2120,6 +2147,9 @@ function updatePhysics(dt) {
   input.actionPriorityTimer=Math.max(0,input.actionPriorityTimer-dt);
   input.trapPressBuffer=Math.max(0,input.trapPressBuffer-dt);
   input.postKickNoAutoTrap=Math.max(0,input.postKickNoAutoTrap-dt);
+  if(!skillIntentActive() && input.skillIntentAttacker){
+    clearSkillIntent();
+  }
   ball.touchGrace=Math.max(0,ball.touchGrace-dt);
   ball.trickProtectTimer=Math.max(0,ball.trickProtectTimer-dt);
   if(ball.trickProtectTimer<=0){
@@ -2228,7 +2258,9 @@ function updatePhysics(dt) {
   for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
     const a=all[i],b=all[j];
     // v72: successful nutmeg lets attacker physically ghost through the target defender.
-    if(nutmegGhostPair(a,b) || nutmegAttackerVsOpponent(a,b) || trickGhostPair(a,b) || trickAttackerVsOpponent(a,b)) continue;
+    if(nutmegGhostPair(a,b) || nutmegAttackerVsOpponent(a,b) ||
+       trickGhostPair(a,b) || trickAttackerVsOpponent(a,b) ||
+       skillIntentGhostPair(a,b)) continue;
 
     const d=dist(a,b);
     if(d<PLAYER_R*2.05 && d>0){
@@ -2804,6 +2836,41 @@ function sfx(name){ return; }
 
 
 
+
+function skillIntentActive(){
+  return performance.now()<input.skillIntentUntil && !!input.skillIntentAttacker;
+}
+
+function startSkillIntent(attacker, ms=520){
+  if(!attacker || ball.owner!==attacker) return;
+  const nearEnemy=opponents(attacker.team)
+    .filter(e=>e.role!=="gk")
+    .some(e=>dist(attacker,e)<130);
+
+  if(!nearEnemy) return;
+
+  input.skillIntentAttacker=attacker;
+  input.skillIntentUntil=performance.now()+ms;
+}
+
+function clearSkillIntent(){
+  input.skillIntentUntil=0;
+  input.skillIntentAttacker=null;
+}
+
+function skillIntentProtectedAgainst(p){
+  if(!skillIntentActive() || !p) return false;
+  const a=input.skillIntentAttacker;
+  return p.team!==a.team;
+}
+
+function skillIntentGhostPair(a,b){
+  if(!skillIntentActive() || !input.skillIntentAttacker) return false;
+  const attacker=input.skillIntentAttacker;
+  return (a===attacker && b.team!==attacker.team) ||
+         (b===attacker && a.team!==attacker.team);
+}
+
 function trickChainActive(){
   return performance.now()<input.trickChainUntil;
 }
@@ -2875,6 +2942,8 @@ function tryDoubleTouch(attacker){
     sideSign=(attacker.y<H/2)?1:-1;
   }
   const side={x:-face.y*sideSign,y:face.x*sideSign};
+
+  clearSkillIntent();
 
   // Half-step sideways + forward burst.
   attacker.x=clamp(attacker.x+side.x*26+face.x*14,COURT.x+25,COURT.x+COURT.w-25);
@@ -2952,6 +3021,7 @@ function tryNutmeg(attacker){
   }
 
   // Nutmeg: send ball through the defender and burst after it.
+  clearSkillIntent();
   ball.owner=null;
   ball.passTarget=null;
   ball.lastTouch=attacker;
@@ -3043,6 +3113,12 @@ trapBtn.addEventListener("pointerdown",e=>{
   const c=controlled();
   const now=performance.now();
 
+  // First TRAP of a possible double-touch grants a short preparation window
+  // so CPU cannot steal between combo inputs.
+  if(ball.owner===c && input.comboStage===0){
+    startSkillIntent(c,560);
+  }
+
   // TRAP -> TRAP -> DASH : prepare double touch.
   const canPrepareDouble =
     ball.owner===c ||
@@ -3084,6 +3160,11 @@ dashBtn.addEventListener("pointerdown",e=>{
   const c=controlled();
   const now=performance.now();
   const isDoubleDash=(now-input.lastDashTapAt)<=(trickChainActive()?520:420);
+
+  // First DASH of a possible nutmeg gets a short preparation shield.
+  if(ball.owner===c && !isDoubleDash){
+    startSkillIntent(c,540);
+  }
   input.lastDashTapAt=now;
 
   // TRAP -> TRAP -> DASH : final input triggers double touch.
