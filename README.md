@@ -510,3 +510,9 @@ GitHub Pagesへそのまま配置して遊べます。
 - ワンデイ大会優勝でもFS.T解放
 - 解放状態はlocalStorageへ保存され、次回起動後も維持
 - CPU側のFS.Tは未解放でも大会・対戦AIとして存在
+
+## v67 バージョン表示修正
+- index.html に残っていた古い v61 / v56 表示を修正
+- 画面表示を v67 に統一
+- GAME_VERSION 定数を追加
+- 起動時にも JavaScript から versionTag を最新版へ同期

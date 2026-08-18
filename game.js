@@ -1,3 +1,4 @@
+const GAME_VERSION="v67";
 (() => {
 "use strict";
 
@@ -2981,3 +2982,10 @@ updateScoreLabel();
 setMenuScreen(teamScreenEl);
 
 })();
+
+// v67: keep the on-screen version synchronized with the build.
+window.addEventListener("DOMContentLoaded",()=>{
+  const versionTag=document.getElementById("versionTag");
+  if(versionTag) versionTag.textContent=GAME_VERSION;
+  document.title=`Futsal Trap Game ${GAME_VERSION}`;
+});
