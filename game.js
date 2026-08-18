@@ -2578,7 +2578,8 @@ function drawSlideKit(p){
   if(kit.kit==="blizzard"){
     ctx.fillStyle="#f8fafc";ctx.fillRect(-23,-11,48,22);
     ctx.fillStyle="#2563eb";
-    for(let x=-22;x<25;x+=12) ctx.fillRect(x,-11,6,22);
+    // vertical stripes in the player's local body coordinates
+    for(let x=-18;x<=18;x+=12) ctx.fillRect(x,-11,6,22);
   } else if(kit.kit==="takezo"){
     ctx.fillStyle="#172554";ctx.fillRect(-23,-11,48,22);
     ctx.fillStyle="#f05aa6";ctx.fillRect(-23,-7,48,7);ctx.fillRect(-23,6,48,7);
@@ -2654,12 +2655,56 @@ function drawPlayer(p) {
   }
 
   if(p.slide>0) {
-    ctx.rotate(-.15);
-    drawSlideKit(p);
-    ctx.strokeStyle=DARK;ctx.lineWidth=6;
-    ctx.beginPath();ctx.moveTo(12,7);ctx.lineTo(43,15);ctx.moveTo(9,-6);ctx.lineTo(39,-16);ctx.stroke();
-    ctx.fillStyle=SKIN;ctx.beginPath();ctx.arc(-22,0,10,0,Math.PI*2);ctx.fill();
-    ctx.restore();return;
+    // v85: upright upper body, one straight leg and one bent leg.
+    // Keep the shirt orientation upright so vertical stripes stay vertical.
+    ctx.save();
+    ctx.translate(-2,2);
+
+    // straight sliding leg
+    ctx.strokeStyle=DARK;
+    ctx.lineWidth=7;
+    ctx.lineCap="round";
+    ctx.beginPath();
+    ctx.moveTo(7,13);
+    ctx.lineTo(40,20);
+    ctx.stroke();
+
+    // bent trailing leg: thigh back/down, then shin forward
+    ctx.beginPath();
+    ctx.moveTo(-2,13);
+    ctx.lineTo(-14,24);
+    ctx.lineTo(6,27);
+    ctx.stroke();
+
+    // torso, still mostly upright
+    ctx.save();
+    ctx.rotate(-.05);
+    if(p.role==='gk') drawGKKitTorso(p); else drawKitTorso(p);
+
+    if(p.role==='gk') drawGKSleeves(p); else drawKitSleeves(p);
+    ctx.strokeStyle=SKIN;
+    ctx.lineWidth=6;
+    ctx.beginPath();
+    ctx.moveTo(-17,-1);ctx.lineTo(-25,8);
+    ctx.moveTo(18,-1);ctx.lineTo(24,7);
+    ctx.stroke();
+
+    // head above torso
+    ctx.fillStyle=SKIN;
+    ctx.beginPath();
+    ctx.arc(0,-27,13,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle="#111827";
+    ctx.beginPath();
+    ctx.arc(-4,-31,1.7,0,Math.PI*2);
+    ctx.arc(4,-31,1.7,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.restore();
+    ctx.restore();
+    return;
   }
 
   const moving=Math.hypot(p.vx,p.vy)>25;
