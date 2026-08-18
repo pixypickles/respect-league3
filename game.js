@@ -1,4 +1,4 @@
-const GAME_VERSION="v86";
+const GAME_VERSION="v87";
 (() => {
 "use strict";
 
@@ -2668,7 +2668,13 @@ function drawPlayer(p) {
   }
 
   if(p.slide>0) {
-    // v85: upright upper body, one straight leg and one bent leg.
+    // v87: mirror the entire slide pose when travelling to the left.
+    // This keeps the extended leg pointing in the actual slide direction.
+    const slideDirX = Math.abs(p.vx)>8 ? p.vx : (p.facingX || 1);
+    ctx.save();
+    if(slideDirX<0) ctx.scale(-1,1);
+
+    // upright upper body, one straight leg and one bent leg.
     // Keep the shirt orientation upright so vertical stripes stay vertical.
     ctx.save();
     ctx.translate(-2,2);
@@ -2715,6 +2721,7 @@ function drawPlayer(p) {
     ctx.fill();
     ctx.restore();
 
+    ctx.restore();
     ctx.restore();
     ctx.restore();
     return;
