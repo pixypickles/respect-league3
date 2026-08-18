@@ -1,4 +1,4 @@
-const GAME_VERSION="v74";
+const GAME_VERSION="v75";
 (() => {
 "use strict";
 
@@ -327,6 +327,9 @@ function prepareMatch(){
   messageTimer=0;
   matchFinished=false;
   input.passCallTimer=0;
+  input.comboStage=0;
+  input.comboUntil=0;
+  input.lastDashTapAt=-9999;
   input.shootDown=false;
   input.shootBallLock=false;
   if(input.pendingShotTimer!==null){
@@ -767,7 +770,10 @@ const input = {
   shootStarted: 0,
   lastShotTapAt: -9999,
   pendingShotTimer: null,
-  pendingShotPlayer: null
+  pendingShotPlayer: null,
+  lastDashTapAt: -9999,
+  comboStage: 0,
+  comboUntil: 0
 };
 
 const teams = { blue: [], red: [] };
@@ -855,7 +861,11 @@ const ball = {
   nutmegTeam:null,
   nutmegTarget:null,
   stealProtectTimer:0,
-  stealProtectTeam:null
+  stealProtectTeam:null,
+  trickProtectTimer:0,
+  trickProtectTeam:null,
+  trickAttacker:null,
+  trickTarget:null
 };
 
 function resetKickoff(team="blue") {
@@ -1227,6 +1237,7 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
+  if(trickProtectedAgainst(p)) return false;
   if(gamePhase==="practice" && !p.practiceActive) return false;
   if(p.role==="gk" && p.gkFall>0) return false;
   // v53: TRAP cannot stop a nutmeg ball.
@@ -1354,6 +1365,7 @@ function stealProtectedAgainst(p){
 }
 
 function shortTrapSteal(actor) {
+  if(trickProtectedAgainst(actor)) return false;
   if(nutmegProtectedAgainst(actor)) return false;
   if(stealProtectedAgainst(actor)) return false;
   if(!actor || actor.role==="gk" || actor.cooldown>0 || actor.stagger>0) return false;
@@ -1401,6 +1413,7 @@ function shortTrapSteal(actor) {
 }
 
 function defensivePoke(actor) {
+  if(trickProtectedAgainst(actor)) return false;
   if(nutmegProtectedAgainst(actor)) return false;
   if(stealProtectedAgainst(actor)) return false;
   if(nutmegProtectedAgainst(actor)) return false;
@@ -1484,6 +1497,7 @@ function shoulderCharge(actor) {
 }
 
 function checkSlideSteal(p) {
+  if(trickProtectedAgainst(p)) return;
   if(nutmegProtectedAgainst(p)) return;
   if(p.slide<=0) return;
   if(ball.owner && ball.owner.team!==p.team && dist(p,ball.owner)<50) {
@@ -2018,6 +2032,12 @@ function updatePhysics(dt) {
   input.actionPriorityTimer=Math.max(0,input.actionPriorityTimer-dt);
   input.postKickNoAutoTrap=Math.max(0,input.postKickNoAutoTrap-dt);
   ball.touchGrace=Math.max(0,ball.touchGrace-dt);
+  ball.trickProtectTimer=Math.max(0,ball.trickProtectTimer-dt);
+  if(ball.trickProtectTimer<=0){
+    ball.trickProtectTeam=null;
+    ball.trickAttacker=null;
+    ball.trickTarget=null;
+  }
   ball.stealProtectTimer=Math.max(0,ball.stealProtectTimer-dt);
   if(ball.stealProtectTimer<=0) ball.stealProtectTeam=null;
   ball.nutmegTimer=Math.max(0,ball.nutmegTimer-dt);
@@ -2118,7 +2138,7 @@ function updatePhysics(dt) {
   for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
     const a=all[i],b=all[j];
     // v72: successful nutmeg lets attacker physically ghost through the target defender.
-    if(nutmegGhostPair(a,b)) continue;
+    if(nutmegGhostPair(a,b) || trickGhostPair(a,b)) continue;
 
     const d=dist(a,b);
     if(d<PLAYER_R*2.05 && d>0){
@@ -2690,6 +2710,68 @@ stickZone.addEventListener("pointercancel",e=>{
 function sfx(name){ return; }
 
 
+
+function trickProtectedAgainst(p){
+  return !!(
+    p &&
+    ball.trickProtectTimer>0 &&
+    ball.trickProtectTeam &&
+    p.team!==ball.trickProtectTeam
+  );
+}
+
+function trickGhostPair(a,b){
+  if(ball.trickProtectTimer<=0 || !ball.trickAttacker || !ball.trickTarget) return false;
+  return (a===ball.trickAttacker && b===ball.trickTarget) ||
+         (a===ball.trickTarget && b===ball.trickAttacker);
+}
+
+function tryDoubleTouch(attacker){
+  if(!attacker || attacker.role==="gk" || ball.owner!==attacker || attacker.stagger>0) return false;
+
+  const enemies=opponents(attacker.team)
+    .filter(e=>e.role!=="gk" && e.stagger<=0)
+    .map(e=>({p:e,d:dist(attacker,e)}))
+    .sort((a,b)=>a.d-b.d);
+
+  const hit=enemies[0];
+  if(!hit || hit.d>92) return false;
+  const defender=hit.p;
+
+  let fx=input.sx, fy=input.sy;
+  if(Math.hypot(fx,fy)<.18){ fx=attacker.dirX; fy=attacker.dirY; }
+  const face=norm(fx,fy);
+
+  // Choose the side opposite the defender's lateral position.
+  const to=norm(defender.x-attacker.x,defender.y-attacker.y);
+  const cross=face.x*to.y-face.y*to.x;
+  const sideSign=cross>=0 ? -1 : 1;
+  const side={x:-face.y*sideSign,y:face.x*sideSign};
+
+  // Half-step sideways + forward burst.
+  attacker.x=clamp(attacker.x+side.x*20+face.x*10,COURT.x+25,COURT.x+COURT.w-25);
+  attacker.y=clamp(attacker.y+side.y*20+face.y*10,COURT.y+25,COURT.y+COURT.h-25);
+  attacker.vx=face.x*285+side.x*180;
+  attacker.vy=face.y*285+side.y*180;
+  attacker.dirX=face.x;
+  attacker.dirY=face.y;
+  attacker.cooldown=.10;
+
+  ball.owner=attacker;
+  ball.lastTouch=attacker;
+  ball.trickProtectTimer=.34;
+  ball.trickProtectTeam=attacker.team;
+  ball.trickAttacker=attacker;
+  ball.trickTarget=defender;
+  ball.touchGrace=.18;
+  ball.protectedTeam=attacker.team;
+
+  input.dashTimer=.22;
+  input.dashCooldown=.26;
+  showMessage("DOUBLE TOUCH!",.34);
+  return true;
+}
+
 function defenderBackDashGuarding(defender, attacker){
   if(!defender || defender.backDashGuard<=0) return false;
 
@@ -2711,7 +2793,7 @@ function tryNutmeg(attacker){
     .sort((a,b)=>a.d-b.d);
 
   const hit=enemies[0];
-  if(!hit || hit.d>82) return false;
+  if(!hit || hit.d>90) return false;
   const defender=hit.p;
 
   const face=norm(attacker.dirX,attacker.dirY);
@@ -2719,7 +2801,7 @@ function tryNutmeg(attacker){
   const align=face.x*to.x+face.y*to.y;
 
   // Defender must be roughly in front.
-  if(align<.25) return false;
+  if(align<-.08) return false;
 
   // Only defense: defender is actively back-dashing away from attacker.
   if(defenderBackDashGuarding(defender,attacker)){
@@ -2805,6 +2887,22 @@ trapBtn.addEventListener("pointerdown",e=>{
   trapBtn.classList.add("active");
 
   const c=controlled();
+  const now=performance.now();
+
+  // TRAP -> DASH -> TRAP : double touch.
+  if(input.comboStage===2 && now<input.comboUntil && ball.owner===c){
+    input.comboStage=0;
+    input.comboUntil=0;
+    if(tryDoubleTouch(c)) return;
+  }
+
+  // Start the double-touch sequence only while we have the ball.
+  if(ball.owner===c){
+    input.comboStage=1;
+    input.comboUntil=now+420;
+  }else if(input.comboStage!==2){
+    input.comboStage=0;
+  }
 
   // On defense, TRAP is a short-range foot steal.
   if((ball.owner && ball.owner.team!=="blue") ||
@@ -2827,6 +2925,17 @@ trapBtn.addEventListener("pointercancel",releaseTrap);
 dashBtn.addEventListener("pointerdown",e=>{
   e.preventDefault();
   const c=controlled();
+  const now=performance.now();
+  const isDoubleDash=(now-input.lastDashTapAt)<=300;
+  input.lastDashTapAt=now;
+
+  // TRAP -> DASH -> TRAP combo middle input.
+  if(input.comboStage===1 && now<input.comboUntil && ball.owner===c){
+    input.comboStage=2;
+    input.comboUntil=now+360;
+  }else if(input.comboStage!==2 && now>=input.comboUntil){
+    input.comboStage=0;
+  }
 
   // Keep one-two return request behavior after a pass.
   if(!ball.owner && ball.passFrom===c && ball.passTarget && ball.passTarget.team==="blue"){
@@ -2843,27 +2952,36 @@ dashBtn.addEventListener("pointerdown",e=>{
     return;
   }
 
-  if(input.dashCooldown<=0){
-    if(!tryNutmeg(c)){
-      input.dashTimer=.19;
-      input.dashCooldown=.34;
+  // Nutmeg is now DASH x2. Second tap can trigger even during the first dash cooldown.
+  if(isDoubleDash && ball.owner===c){
+    if(tryNutmeg(c)){
+      input.comboStage=0;
+      input.comboUntil=0;
+      dashBtn.classList.add("active");
+      setTimeout(()=>dashBtn.classList.remove("active"),150);
+      return;
+    }
+  }
 
-      // Defensive back-dash guard window.
-      const nearOpp=opponents(c.team)
-        .filter(e=>e.role!=="gk")
-        .sort((a,b)=>dist(c,a)-dist(c,b))[0];
-      if(nearOpp && dist(c,nearOpp)<100){
-        const away=norm(c.x-nearOpp.x,c.y-nearOpp.y);
-        const move=norm(input.sx,input.sy);
-        if((away.x*move.x+away.y*move.y)>.45){
-          c.backDashGuard=.28;
-        }
+  if(input.dashCooldown<=0){
+    input.dashTimer=.19;
+    input.dashCooldown=.34;
+
+    // Defensive back-dash guard window.
+    const nearOpp=opponents(c.team)
+      .filter(e=>e.role!=="gk")
+      .sort((a,b)=>dist(c,a)-dist(c,b))[0];
+    if(nearOpp && dist(c,nearOpp)<100){
+      const away=norm(c.x-nearOpp.x,c.y-nearOpp.y);
+      const move=norm(input.sx,input.sy);
+      if((away.x*move.x+away.y*move.y)>.45){
+        c.backDashGuard=.28;
       }
     }
-
-    dashBtn.classList.add("active");
-    setTimeout(()=>dashBtn.classList.remove("active"),150);
   }
+
+  dashBtn.classList.add("active");
+  setTimeout(()=>dashBtn.classList.remove("active"),150);
 });
 
 passBtn.addEventListener("pointerdown",e=>{
