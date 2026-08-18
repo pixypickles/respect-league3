@@ -689,3 +689,9 @@ GitHub Pagesへそのまま配置して遊べます。
 - foulPause / pendingFreeKick をトップレベルで確実に初期化
 - resetKickoff() から安全に参照できるよう修正
 - v87のスライディング左右反転仕様は維持
+
+## v89 更新確認・ファウル変数再修正
+- 画面上部中央に固定の大きな v89 バッジを追加
+- 古いversionTagとは別系統で必ず見えるようにした
+- foulPause / pendingFreeKick をGAME_VERSION直後のトップレベルへ強制配置
+- runtime error発生時はバッジが「v89 ERROR」に変わる

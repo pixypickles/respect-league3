@@ -774,3 +774,23 @@ body {
   color:#fff;
   text-shadow:0 3px 0 rgba(0,0,0,.3);
 }
+
+
+/* ===== v89 fixed build badge ===== */
+.build-badge{
+  position:fixed;
+  top:max(8px, env(safe-area-inset-top));
+  left:50%;
+  transform:translateX(-50%);
+  z-index:999;
+  padding:6px 14px;
+  border-radius:999px;
+  background:rgba(15,23,42,.88);
+  border:2px solid rgba(255,255,255,.55);
+  color:#fff;
+  font-size:clamp(16px,2.4vw,24px);
+  font-weight:1000;
+  letter-spacing:.06em;
+  pointer-events:none;
+  box-shadow:0 3px 10px rgba(0,0,0,.3);
+}

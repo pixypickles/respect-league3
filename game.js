@@ -1,4 +1,7 @@
-const GAME_VERSION="v88";
+const buildBadge=document.getElementById("buildBadge");
+const GAME_VERSION="v89";
+let foulPause=0;
+let pendingFreeKick=null;
 (() => {
 "use strict";
 
@@ -789,8 +792,6 @@ let elapsed = 0;
 let matchLeft = MATCH_SECONDS;
 let scoreBlue = 0, scoreRed = 0;
 let goalPause = 0;
-let foulPause=0;
-let pendingFreeKick=null;
 let messageTimer = 0;
 
 const input = {
@@ -3930,4 +3931,11 @@ window.addEventListener("DOMContentLoaded",()=>{
   const versionTag=document.getElementById("versionTag");
   if(versionTag) versionTag.textContent=GAME_VERSION;
   document.title=`Futsal Trap Game ${GAME_VERSION}`;
+});
+
+window.addEventListener("DOMContentLoaded",()=>{
+  const v=document.getElementById("versionTag");
+  if(v) v.textContent="v89";
+  const b=document.getElementById("buildBadge");
+  if(b) b.textContent="v89";
 });
