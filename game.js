@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v96";
+const GAME_VERSION="v97";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -537,7 +537,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v96: vertical hazard lines only, evenly spaced.
+  // v97: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -584,7 +584,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v96: forward is always the attacking direction, never toward own goal.
+  // v97: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -1594,6 +1594,10 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
+  // v97: TRAP must not vacuum a loose ball from a distance.
+  // Ownership/control is allowed only when the ball is actually at the player's feet.
+  const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
+
   // During nutmeg/double-touch, only the attacker may touch the ball.
   // Opposing GK may still use the dedicated just-timed TRAP save below.
   if(techniqueBallReservedFor(p)){
@@ -1641,7 +1645,7 @@ function attemptTrap(p, dt) {
     const slowLoose = speed < 115 && ball.z < 14 && !ball.passTarget && p.autoControlTimer<=0;
 
     if(input.trap || input.trapPressBuffer>0 || (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      ball.owner=p;
+      if(trapBallDistance<=34) ball.owner=p;
       ball.passTarget=null;
       ball.vx=ball.vy=ball.vz=0;
       ball.z=0;
@@ -1677,7 +1681,7 @@ function attemptTrap(p, dt) {
     // slow and uncontested ball. This prevents both teams from auto-trapping at once.
     const oppNear = opponents(p.team)
       .filter(q=>q.role!=="gk")
-      .some(q=>dist(q,ball)<58);
+      .some(q=>dist(q,ball)<38);
 
     const isTarget = ball.passTarget===p;
     const looseCollector = nearest===p && speed<120 && !oppNear && !ball.passTarget;
@@ -1686,7 +1690,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      ball.owner=p;
+      if(trapBallDistance<=34) ball.owner=p;
       ball.vx=ball.vy=ball.vz=0;
       ball.z=0;
       ball.lastTouch=p;
@@ -2152,7 +2156,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v96: any AI field player may shoot when the chance is clearly good.
+  // v97: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3123,10 +3127,12 @@ function drawPlayer(p) {
   if(deathmatchState.active &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
+    // v97: enemy bazooka is visibly held toward the left (its attacking direction).
+    const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
-    ctx.beginPath();ctx.moveTo(10,-8);ctx.lineTo(34,-12);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
     ctx.strokeStyle="#111827";ctx.lineWidth=4;
-    ctx.beginPath();ctx.moveTo(30,-12);ctx.lineTo(40,-12);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(30*gunDir,-12);ctx.lineTo(40*gunDir,-12);ctx.stroke();
   }
 
   if(p.controlled) {
@@ -4307,7 +4313,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v96";
+  if(v) v.textContent="v97";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v96";
+  if(b) b.textContent="v97";
 });
