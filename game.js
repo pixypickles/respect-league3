@@ -1,4 +1,4 @@
-const GAME_VERSION="v75";
+const GAME_VERSION="v77";
 (() => {
 "use strict";
 
@@ -1002,6 +1002,7 @@ function bestPassTarget(p, inputDir=null) {
 
 
 function nearbyLooseBallFor(p, radius=84) {
+  if(nutmegProtectedAgainst(p) || trickProtectedAgainst(p)) return false;
   return !ball.owner && ball.z<34 && dist(p,ball)<=radius;
 }
 
@@ -1237,6 +1238,9 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
+  if(p.role==="gk" && (nutmegProtectedAgainst(p) || trickProtectedAgainst(p))){
+    return gkTimedTrickSave(p);
+  }
   if(trickProtectedAgainst(p)) return false;
   if(gamePhase==="practice" && !p.practiceActive) return false;
   if(p.role==="gk" && p.gkFall>0) return false;
@@ -1288,7 +1292,6 @@ function attemptTrap(p, dt) {
         p.kickAnim=0;
         p.slide=0;
         p.shoulder=0;
-        showMessage("AUTO TRAP",.22);
       } else {
         showMessage(speed>500?"SUPER TRAP!":"TRAP!",.38);
       }
@@ -1448,6 +1451,11 @@ function slide(actor) {
 
 
 function shoulderCharge(actor) {
+  if(trickProtectedAgainst(actor)) return false;
+
+  // Once a nutmeg has started, defenders cannot interrupt it with a shoulder.
+  if(nutmegProtectedAgainst(actor)) return false;
+
   if(!actor || actor.role==="gk" || actor.cooldown>0 || actor.shoulder>0 || actor.stagger>0) return false;
 
   const enemies=opponents(actor.team)
@@ -1456,6 +1464,7 @@ function shoulderCharge(actor) {
 
   const target=enemies[0];
   if(!target || dist(actor,target)>78) return false;
+  if(ball.nutmegTimer>0 && ball.passFrom===target && actor.team!==target.team) return false;
 
   const face=norm(actor.dirX,actor.dirY);
   const to=norm(target.x-actor.x,target.y-actor.y);
@@ -1515,6 +1524,10 @@ function checkSlideSteal(p) {
 }
 
 function offBallAction(team, type) {
+  if(ball.trickProtectTimer>0 && ball.trickProtectTeam && ball.trickProtectTeam!==team) return;
+
+  if(ball.nutmegTimer>0 && ball.nutmegTeam && ball.nutmegTeam!==team) return;
+
   const owner=ball.owner;
   let candidates=teamPlayers(team).filter(p=>p.role!=="gk");
   if(owner && owner.team!==team) candidates.sort((a,b)=>dist(a,owner)-dist(b,owner));
@@ -1938,7 +1951,54 @@ function fallenGKParry(p){
   showMessage("DESPERATE SAVE!",.34);
 }
 
+
+function gkTimedTrickSave(p){
+  if(!p || p.role!=="gk") return false;
+
+  const protectedBall =
+    (ball.nutmegTimer>0 && ball.nutmegTeam && p.team!==ball.nutmegTeam) ||
+    (ball.trickProtectTimer>0 && ball.trickProtectTeam && p.team!==ball.trickProtectTeam);
+
+  if(!protectedBall) return false;
+
+  // Player-side GK uses the same TRAP button. The timing window is deliberately tight.
+  const manual = p.team==="blue" && input.trap && input.actionPriorityTimer>.055;
+
+  // CPU rarely hits the exact timing.
+  const cpuPerfect = p.team==="red" && Math.random()<0.018;
+
+  if(!(manual || cpuPerfect)) return false;
+  if(dist(p,ball)>48 || ball.z>34) return false;
+
+  const awayX=p.team==="blue"?1:-1;
+  const side=Math.sign(ball.y-p.y) || (Math.random()<.5?-1:1);
+
+  ball.owner=null;
+  ball.vx=awayX*260;
+  ball.vy=side*rand(90,180);
+  ball.vz=65;
+  ball.shot=false;
+  ball.lastTouch=p;
+  ball.touchGrace=.14;
+
+  ball.nutmegTimer=0;
+  ball.nutmegTeam=null;
+  ball.nutmegTarget=null;
+  ball.trickProtectTimer=0;
+  ball.trickProtectTeam=null;
+  ball.trickAttacker=null;
+  ball.trickTarget=null;
+
+  showMessage("GK TRAP SAVE!",.38);
+  return true;
+}
+
 function updateGK(p,dt) {
+  if(nutmegProtectedAgainst(p) || trickProtectedAgainst(p)){
+    if(gkTimedTrickSave(p)) return;
+    return;
+  }
+
   if(gamePhase==="practice" && !p.practiceActive) return;
   if(p.gkFall>0){
     if(!fallenGKCanTouchBall(p)) return;
@@ -2109,7 +2169,8 @@ function updatePhysics(dt) {
   // Keep uninvolved CPU players out of the immediate ball crowd.
   for(const p of all) {
     if(p.controlled || p.role==="gk" || ball.owner===p || ball.passTarget===p) continue;
-    if(ball.nutmegTimer>0 && (p===ball.nutmegTarget || p===ball.passFrom)) continue;
+    if(ball.nutmegTimer>0 && (p===ball.nutmegTarget || p===ball.passFrom || p.team!==ball.nutmegTeam)) continue;
+    if(ball.trickProtectTimer>0 && (p===ball.trickTarget || p===ball.trickAttacker || p.team!==ball.trickProtectTeam)) continue;
 
     let allowedNear=false;
     if(ball.owner && ball.owner.team!==p.team) {
@@ -2138,7 +2199,7 @@ function updatePhysics(dt) {
   for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
     const a=all[i],b=all[j];
     // v72: successful nutmeg lets attacker physically ghost through the target defender.
-    if(nutmegGhostPair(a,b) || trickGhostPair(a,b)) continue;
+    if(nutmegGhostPair(a,b) || nutmegAttackerVsOpponent(a,b) || trickGhostPair(a,b) || trickAttackerVsOpponent(a,b)) continue;
 
     const d=dist(a,b);
     if(d<PLAYER_R*2.05 && d>0){
@@ -2720,6 +2781,15 @@ function trickProtectedAgainst(p){
   );
 }
 
+
+function trickAttackerVsOpponent(a,b){
+  if(ball.trickProtectTimer<=0 || !ball.trickAttacker) return false;
+  const attacker=ball.trickAttacker;
+  if(a===attacker && b.team!==attacker.team) return true;
+  if(b===attacker && a.team!==attacker.team) return true;
+  return false;
+}
+
 function trickGhostPair(a,b){
   if(ball.trickProtectTimer<=0 || !ball.trickAttacker || !ball.trickTarget) return false;
   return (a===ball.trickAttacker && b===ball.trickTarget) ||
@@ -2847,6 +2917,15 @@ function tryNutmeg(attacker){
   return true;
 }
 
+
+
+function nutmegAttackerVsOpponent(a,b){
+  if(ball.nutmegTimer<=0 || !ball.passFrom) return false;
+  const attacker=ball.passFrom;
+  if(a===attacker && b.team!==attacker.team) return true;
+  if(b===attacker && a.team!==attacker.team) return true;
+  return false;
+}
 
 function nutmegGhostPair(a,b){
   if(ball.nutmegTimer<=0 || !ball.nutmegTarget || !ball.passFrom) return false;

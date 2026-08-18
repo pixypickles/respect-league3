@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <meta name="theme-color" content="#111827" />
-  <title>Futsal Trap Game v75</title>
+  <title>Futsal Trap Game v77</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -15,7 +15,7 @@
     <canvas id="game" width="1280" height="720" aria-label="Futsal game"></canvas>
 
     <div id="hud">
-      <div id="score">BLUE 0 - 0 RED</div><div id="versionTag">v75</div>
+      <div id="score">BLUE 0 - 0 RED</div><div id="versionTag">v77</div>
       <div id="clock">03:00</div>
     </div>
 
@@ -97,7 +97,13 @@
           <p>ゴール方向へ強シュート。方向スティックの上下でコースを狙えます。素早く2回押すとさらに強いシュート。</p>
 
           <h2>DASH</h2>
-          <p>短い加速。相手が近く正面にいる状態では股抜きになります。股抜きを防ぐには、抜かれる側が後ろ方向へDASH。</p>
+          <p>短い加速。通常は1回押しで短いDASH。相手が前方〜斜め前にいる時、素早く2回押すと股抜きになります。</p>
+
+          <h2>股抜き</h2>
+          <p>DASHを素早く2回。ボールが相手をすり抜け、そのまま自分も加速して追い越します。発動後は通常のTRAP・足出し・ショルダーでは止められません。フィールド選手が防ぐには、発動前に後ろ方向へDASH。GKだけは接触の瞬間にジャストTRAPで止められます。</p>
+
+          <h2>ダブルタッチ</h2>
+          <p>ボールを持った状態でTRAP → DASH → TRAPを素早く入力。進行方向から半歩横へずれて相手の脇を抜けます。技の途中は相手フィールド選手がボールへ触れません。GKだけは接触の瞬間にジャストTRAPで止められます。</p>
 
           <h2>守備</h2>
           <p>PASSで足を出してボールをこぼれさせる。SHOTでショルダーチャージ。TRAPはさらに短い距離でスティール。</p>
