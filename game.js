@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v101";
+const GAME_VERSION="v102";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -544,7 +544,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v101: vertical hazard lines only, evenly spaced.
+  // v102: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -671,8 +671,8 @@ function updateExplosiveBall(dt){
 
 function spawnDragonFireball(){
   // Red dragon mouth: just outside the upper-right edge.
-  const x=COURT.x+COURT.w+42;
-  const y=COURT.y+72;
+  const x=COURT.x+COURT.w+12;
+  const y=COURT.y+66;
 
   // Random inward angle, always with a leftward component.
   const deg=rand(145,215);
@@ -688,8 +688,8 @@ function spawnDragonFireball(){
 
 function spawnDragonBreath(){
   // Blue dragon mouth: just outside the lower-left edge.
-  const x=COURT.x-42;
-  const y=COURT.y+COURT.h-72;
+  const x=COURT.x-12;
+  const y=COURT.y+COURT.h-66;
 
   // Random inward angle, always with a rightward component.
   const deg=rand(-35,35);
@@ -812,38 +812,147 @@ function drawDragonEffects(){
   if(gameMode!=="deathmatch-dragon") return;
   ctx.save();
 
-  // Larger red dragon outside upper-right.
-  ctx.save();
-  ctx.translate(COURT.x+COURT.w+42,COURT.y+72);
-  ctx.scale(2.25,2.25);
-  ctx.fillStyle="#b91c1c";
-  ctx.beginPath();
-  ctx.moveTo(-24,0);ctx.lineTo(12,-20);ctx.lineTo(32,-4);ctx.lineTo(12,14);ctx.closePath();ctx.fill();
-  ctx.fillStyle="#7f1d1d";
-  ctx.beginPath();ctx.moveTo(-8,-6);ctx.lineTo(-26,-24);ctx.lineTo(-20,2);ctx.closePath();ctx.fill();
-  ctx.fillStyle="#fca5a5";
-  ctx.beginPath();ctx.arc(16,-4,5,0,Math.PI*2);ctx.fill();
-  ctx.restore();
+  function drawDragon(x,y,dir,body,wing,belly,eye){
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.scale(dir*1.55,1.55);
 
-  // Larger blue dragon outside lower-left.
-  ctx.save();
-  ctx.translate(COURT.x-42,COURT.y+COURT.h-72);
-  ctx.scale(-2.25,2.25);
-  ctx.fillStyle="#1d4ed8";
-  ctx.beginPath();
-  ctx.moveTo(-24,0);ctx.lineTo(12,-20);ctx.lineTo(32,-4);ctx.lineTo(12,14);ctx.closePath();ctx.fill();
-  ctx.fillStyle="#1e3a8a";
-  ctx.beginPath();ctx.moveTo(-8,-6);ctx.lineTo(-26,-24);ctx.lineTo(-20,2);ctx.closePath();ctx.fill();
-  ctx.fillStyle="#bfdbfe";
-  ctx.beginPath();ctx.arc(16,-4,5,0,Math.PI*2);ctx.fill();
-  ctx.restore();
+    // tail
+    ctx.strokeStyle=body;
+    ctx.lineWidth=10;
+    ctx.lineCap="round";
+    ctx.beginPath();
+    ctx.moveTo(-18,10);
+    ctx.quadraticCurveTo(-42,18,-54,2);
+    ctx.stroke();
+
+    // body
+    ctx.fillStyle=body;
+    ctx.beginPath();
+    ctx.ellipse(-4,4,24,18,0,0,Math.PI*2);
+    ctx.fill();
+
+    // belly
+    ctx.fillStyle=belly;
+    ctx.beginPath();
+    ctx.ellipse(1,8,11,10,0,0,Math.PI*2);
+    ctx.fill();
+
+    // back wing
+    ctx.fillStyle=wing;
+    ctx.beginPath();
+    ctx.moveTo(-12,-5);
+    ctx.lineTo(-28,-30);
+    ctx.lineTo(-2,-18);
+    ctx.lineTo(7,-4);
+    ctx.closePath();
+    ctx.fill();
+
+    // front wing
+    ctx.beginPath();
+    ctx.moveTo(2,-6);
+    ctx.lineTo(19,-31);
+    ctx.lineTo(25,-6);
+    ctx.lineTo(13,4);
+    ctx.closePath();
+    ctx.fill();
+
+    // neck
+    ctx.strokeStyle=body;
+    ctx.lineWidth=12;
+    ctx.beginPath();
+    ctx.moveTo(13,-2);
+    ctx.lineTo(25,-15);
+    ctx.stroke();
+
+    // head / snout
+    ctx.fillStyle=body;
+    ctx.beginPath();
+    ctx.ellipse(31,-18,14,11,-.12,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(38,-18);
+    ctx.lineTo(50,-14);
+    ctx.lineTo(40,-9);
+    ctx.closePath();
+    ctx.fill();
+
+    // horns
+    ctx.fillStyle=belly;
+    ctx.beginPath();
+    ctx.moveTo(26,-27);
+    ctx.lineTo(22,-38);
+    ctx.lineTo(31,-29);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(34,-27);
+    ctx.lineTo(38,-38);
+    ctx.lineTo(39,-25);
+    ctx.closePath();
+    ctx.fill();
+
+    // legs / claws
+    ctx.strokeStyle=body;
+    ctx.lineWidth=7;
+    ctx.beginPath();
+    ctx.moveTo(-10,16); ctx.lineTo(-16,27);
+    ctx.moveTo(8,16); ctx.lineTo(13,27);
+    ctx.stroke();
+
+    ctx.strokeStyle=belly;
+    ctx.lineWidth=3;
+    ctx.beginPath();
+    ctx.moveTo(-16,27);ctx.lineTo(-22,29);
+    ctx.moveTo(-16,27);ctx.lineTo(-13,31);
+    ctx.moveTo(13,27);ctx.lineTo(8,30);
+    ctx.moveTo(13,27);ctx.lineTo(18,30);
+    ctx.stroke();
+
+    // eye
+    ctx.fillStyle=eye;
+    ctx.beginPath();
+    ctx.arc(35,-21,2.5,0,Math.PI*2);
+    ctx.fill();
+
+    // nostril
+    ctx.fillStyle="#111827";
+    ctx.beginPath();
+    ctx.arc(45,-15,1.7,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  // Red dragon, outside upper-right, facing left into court.
+  drawDragon(
+    COURT.x+COURT.w+54,
+    COURT.y+82,
+    -1,
+    "#b91c1c",
+    "#7f1d1d",
+    "#fecaca",
+    "#fde047"
+  );
+
+  // Blue dragon, outside lower-left, facing right into court.
+  drawDragon(
+    COURT.x-54,
+    COURT.y+COURT.h-82,
+    1,
+    "#1d4ed8",
+    "#1e3a8a",
+    "#dbeafe",
+    "#bfdbfe"
+  );
 
   const fb=deathmatchState.dragonFireball;
   if(fb){
     ctx.fillStyle="#fb923c";
     ctx.beginPath();ctx.arc(fb.x,fb.y,15,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle="#fef3c7";ctx.lineWidth=4;
-    ctx.beginPath();ctx.arc(fb.x,fb.y,8,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();ctx.arc(fb.x,fb.y,9,0,Math.PI*2);ctx.stroke();
   }
 
   const ib=deathmatchState.dragonIceball;
@@ -851,7 +960,7 @@ function drawDragonEffects(){
     ctx.fillStyle="#60a5fa";
     ctx.beginPath();ctx.arc(ib.x,ib.y,14,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle="#dbeafe";ctx.lineWidth=4;
-    ctx.beginPath();ctx.arc(ib.x,ib.y,7,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();ctx.arc(ib.x,ib.y,8,0,Math.PI*2);ctx.stroke();
   }
 
   ctx.restore();
@@ -873,7 +982,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v101: forward is always the attacking direction, never toward own goal.
+  // v102: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -1903,7 +2012,7 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
-  // v101: TRAP must not vacuum a loose ball from a distance.
+  // v102: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -1954,7 +2063,7 @@ function attemptTrap(p, dt) {
     const slowLoose = speed < 115 && ball.z < 14 && !ball.passTarget && p.autoControlTimer<=0;
 
     if(input.trap || input.trapPressBuffer>0 || (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v101: never stop/snap a ball unless it is genuinely at the feet.
+      // v102: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -2001,7 +2110,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v101: CPU also needs real contact before claiming/stopping the ball.
+      // v102: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -2470,7 +2579,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v101: any AI field player may shoot when the chance is clearly good.
+  // v102: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -2862,7 +2971,7 @@ function updateGK(p,dt) {
 }
 
 function updatePhysics(dt) {
-  // v101: in DEATHMATCH a loose ball must physically reach the feet.
+  // v102: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -3457,7 +3566,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v101: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v102: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -4648,7 +4757,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v101";
+  if(v) v.textContent="v102";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v101";
+  if(b) b.textContent="v102";
 });
