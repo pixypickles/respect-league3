@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v91";
+const GAME_VERSION="v92";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -38,6 +38,7 @@ const tournamentBtnEl = document.getElementById("tournamentBtn");
 const bracketBtnEl = document.getElementById("bracketBtn");
 const freeMatchBtnEl = document.getElementById("freeMatchBtn");
 const practiceBtnEl = document.getElementById("practiceBtn");
+const deathmatchBtnEl = document.getElementById("deathmatchBtn");
 const controlsBtnEl = document.getElementById("controlsBtn");
 const controlsScreenEl = document.getElementById("controlsScreen");
 const controlsBackBtnEl = document.getElementById("controlsBackBtn");
@@ -87,6 +88,14 @@ let gamePhase="menu";
 let tournamentOpponents=[];
 let tournamentRound=0;
 let dayCup=null;
+let deathmatchState={
+  active:false,
+  shockTimer:2.2,
+  shockFlash:0,
+  projectile:null,
+  explosion:null,
+  lines:[]
+};
 let matchFinished=false;
 let practiceType=null;
 let tutorialIndex=0;
@@ -523,8 +532,158 @@ function registerDayCupPlayerResult(){
   dayCup.completedMatches.add([a,b].sort().join("__"));
 }
 
+
+function setupDeathmatchLines(){
+  deathmatchState.lines=[
+    {x1:COURT.x+COURT.w*.25,y1:COURT.y+35,x2:COURT.x+COURT.w*.25,y2:COURT.y+COURT.h-35},
+    {x1:COURT.x+COURT.w*.50,y1:COURT.y+35,x2:COURT.x+COURT.w*.50,y2:COURT.y+COURT.h-35},
+    {x1:COURT.x+COURT.w*.75,y1:COURT.y+35,x2:COURT.x+COURT.w*.75,y2:COURT.y+COURT.h-35},
+    {x1:COURT.x+60,y1:COURT.y+COURT.h*.50,x2:COURT.x+COURT.w-60,y2:COURT.y+COURT.h*.50}
+  ];
+}
+
+function startDeathmatch(){
+  gameMode="deathmatch";
+  if(dashBtn) dashBtn.textContent="FIRE";
+  deathmatchState.active=true;
+  deathmatchState.shockTimer=rand(2.4,3.8);
+  deathmatchState.shockFlash=0;
+  deathmatchState.projectile=null;
+  deathmatchState.explosion=null;
+  setupDeathmatchLines();
+
+  const pool=TEAM_DEFS.filter(t=>t.id!==selectedTeamId);
+  const opp=pool[Math.floor(Math.random()*pool.length)]?.id || "takezo";
+  startMatch(opp);
+}
+
+function lineDistanceToPlayer(line,p){
+  return pointSegmentDistance(p.x,p.y,line.x1,line.y1,line.x2,line.y2);
+}
+
+function triggerDeathmatchShock(){
+  deathmatchState.shockFlash=.24;
+  for(const p of [...teams.blue,...teams.red]){
+    if(deathmatchState.lines.some(line=>lineDistanceToPlayer(line,p)<16)){
+      p.stagger=Math.max(p.stagger,2.1);
+      p.vx=p.vy=0;
+    }
+  }
+}
+
+function fireBazooka(p){
+  if(!deathmatchState.active || !p || p.role==="gk" || deathmatchState.projectile) return false;
+  let dx=input.sx,dy=input.sy;
+  if(Math.hypot(dx,dy)<.18){dx=p.dirX;dy=p.dirY;}
+  const n=norm(dx,dy);
+  deathmatchState.projectile={
+    x:p.x+n.x*26,y:p.y+n.y*26,
+    vx:n.x*620,vy:n.y*620,
+    team:p.team,owner:p,life:1.7
+  };
+  p.kickAnim=.12;
+  showMessage("BAZOOKA!",.26);
+  return true;
+}
+
+function explodeBazooka(x,y,owner){
+  deathmatchState.projectile=null;
+  deathmatchState.explosion={x,y,t:.34};
+
+  for(const p of [...teams.blue,...teams.red]){
+    const d=Math.hypot(p.x-x,p.y-y);
+    if(d>115) continue;
+    const n=norm(p.x-x,p.y-y);
+    const force=(1-d/115);
+    p.vx+=n.x*(390+430*force);
+    p.vy+=n.y*(390+430*force);
+    p.stagger=Math.max(p.stagger,.55+.7*force);
+    if(p.role==="gk") p.gkFall=Math.max(p.gkFall,.9+.55*force);
+  }
+
+  if(ball.owner){
+    const o=ball.owner;
+    const d=Math.hypot(o.x-x,o.y-y);
+    if(d<110){
+      const n=norm(o.x-x,o.y-y);
+      ball.owner=null;
+      ball.x=o.x;ball.y=o.y;ball.z=8;
+      ball.vx=n.x*480;ball.vy=n.y*480;ball.vz=70;
+      ball.touchGrace=0;ball.protectedTeam=null;
+    }
+  }else{
+    const d=Math.hypot(ball.x-x,ball.y-y);
+    if(d<130){
+      const n=norm(ball.x-x,ball.y-y);
+      ball.vx=n.x*540;ball.vy=n.y*540;ball.vz=90;
+    }
+  }
+}
+
+function updateDeathmatch(dt){
+  if(!deathmatchState.active) return;
+
+  deathmatchState.shockTimer-=dt;
+  deathmatchState.shockFlash=Math.max(0,deathmatchState.shockFlash-dt);
+  if(deathmatchState.shockTimer<=0){
+    triggerDeathmatchShock();
+    deathmatchState.shockTimer=rand(2.7,4.2);
+  }
+
+  const pr=deathmatchState.projectile;
+  if(pr){
+    pr.life-=dt;
+    pr.x+=pr.vx*dt;
+    pr.y+=pr.vy*dt;
+    let hit=pr.x<COURT.x || pr.x>COURT.x+COURT.w || pr.y<COURT.y || pr.y>COURT.y+COURT.h;
+    if(!hit){
+      for(const p of [...teams.blue,...teams.red]){
+        if(p===pr.owner) continue;
+        if(Math.hypot(p.x-pr.x,p.y-pr.y)<24){hit=true;break;}
+      }
+    }
+    if(hit || pr.life<=0) explodeBazooka(pr.x,pr.y,pr.owner);
+  }
+
+  if(deathmatchState.explosion){
+    deathmatchState.explosion.t-=dt;
+    if(deathmatchState.explosion.t<=0) deathmatchState.explosion=null;
+  }
+}
+
+function drawDeathmatchEffects(){
+  if(!deathmatchState.active) return;
+  ctx.save();
+  ctx.lineCap="round";
+  for(const line of deathmatchState.lines){
+    ctx.strokeStyle=deathmatchState.shockFlash>0 ? "rgba(147,197,253,.98)" : "rgba(96,165,250,.38)";
+    ctx.lineWidth=deathmatchState.shockFlash>0 ? 8 : 3;
+    ctx.beginPath();ctx.moveTo(line.x1,line.y1);ctx.lineTo(line.x2,line.y2);ctx.stroke();
+  }
+  const pr=deathmatchState.projectile;
+  if(pr){
+    ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(pr.x,pr.y,8,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#f97316";ctx.beginPath();ctx.arc(pr.x-pr.vx*.015,pr.y-pr.vy*.015,5,0,Math.PI*2);ctx.fill();
+  }
+  const ex=deathmatchState.explosion;
+  if(ex){
+    const progress=1-ex.t/.34;
+    const r=28+progress*72;
+    ctx.fillStyle=`rgba(249,115,22,${.62*(1-progress)})`;
+    ctx.beginPath();ctx.arc(ex.x,ex.y,r,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle=`rgba(255,255,255,${.8*(1-progress)})`;
+    ctx.lineWidth=5;ctx.beginPath();ctx.arc(ex.x,ex.y,r*.72,0,Math.PI*2);ctx.stroke();
+  }
+  ctx.restore();
+}
 function startMatch(opponentId){
   opponentTeamId=opponentId;
+  if(gameMode!=="deathmatch"){
+    if(dashBtn) dashBtn.textContent="DASH";
+    deathmatchState.active=false;
+    deathmatchState.projectile=null;
+    deathmatchState.explosion=null;
+  }
   gamePhase="match";
   prepareMatch();
   hideMenu();
@@ -544,6 +703,10 @@ function returnToMainMenu(){
   tournamentOpponents=[];
   tournamentRound=0;
   dayCup=null;
+  deathmatchState.active=false;
+  deathmatchState.projectile=null;
+  deathmatchState.explosion=null;
+  if(dashBtn) dashBtn.textContent="DASH";
   renderTeamSelection();
   setMenuScreen(teamScreenEl);
 }
@@ -559,6 +722,7 @@ function finishMatch(){
   resultKickerEl.textContent=
     gameMode==="tournament" ? `TOURNAMENT ${tournamentRound+1}/4` :
     gameMode==="daycup" ? (dayCup && dayCup.stage==="final" ? "ONE DAY CUP FINAL" : "ONE DAY CUP") :
+    gameMode==="deathmatch" ? "DEATHMATCH" :
     "FREE MATCH";
   tournamentProgressEl.textContent="";
   dayCupInfoEl.textContent="";
@@ -2419,6 +2583,7 @@ function update(dt) {
   for(const p of teams.blue) p.role==="gk"?updateGK(p,dt):updateAI(p,dt);
   for(const p of teams.red) p.role==="gk"?updateGK(p,dt):updateAI(p,dt);
 
+  if(deathmatchState.active) updateDeathmatch(dt);
   updatePhysics(dt);
 }
 
@@ -2767,6 +2932,13 @@ function drawPlayer(p) {
   ctx.arc(headShift+4,-30,1.7,0,Math.PI*2);
   ctx.fill();
 
+  if(deathmatchState.active && p.controlled && p.role!=="gk"){
+    ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
+    ctx.beginPath();ctx.moveTo(10,-8);ctx.lineTo(34,-12);ctx.stroke();
+    ctx.strokeStyle="#111827";ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(30,-12);ctx.lineTo(40,-12);ctx.stroke();
+  }
+
   if(p.controlled) {
     ctx.strokeStyle="#fde047";ctx.lineWidth=4;
     ctx.beginPath();ctx.arc(0,4,29,0,Math.PI*2);ctx.stroke();
@@ -2795,6 +2967,7 @@ function drawBall() {
 function draw() {
   ctx.clearRect(0,0,W,H);
   drawCourt();
+  if(deathmatchState.active) drawDeathmatchEffects();
 
   // sort by y for a tiny bit of depth
   const all=[...teams.blue,...teams.red].filter(p=>gamePhase!=="practice" || p.practiceActive).sort((a,b)=>a.y-b.y);
@@ -3626,6 +3799,14 @@ trapBtn.addEventListener("pointercancel",releaseTrap);
 
 // DASH is a quick burst, not a hold-to-sprint button.
 dashBtn.addEventListener("pointerdown",e=>{
+  if(deathmatchState.active){
+    e.preventDefault();
+    fireBazooka(controlled());
+    dashBtn.classList.add("active");
+    setTimeout(()=>dashBtn.classList.remove("active"),120);
+    return;
+  }
+
   e.preventDefault();
   const c=controlled();
   const now=performance.now();
@@ -3933,7 +4114,8 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v91";
+  if(v) v.textContent="v92";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v91";
-});
+  if(b) b.textContent="v92";
+});bindMenuTap(deathmatchBtnEl,startDeathmatch);
+
