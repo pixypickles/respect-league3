@@ -799,3 +799,8 @@ body {
   background:linear-gradient(180deg,#7f1d1d,#450a0a);
   border-color:rgba(248,113,113,.75);
 }
+
+#tournamentBtn,#bracketBtn{
+  background:linear-gradient(180deg,#2563eb,#1d4ed8);
+  border-color:rgba(147,197,253,.9);
+}

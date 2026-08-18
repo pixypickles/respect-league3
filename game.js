@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v102";
+const GAME_VERSION="v103";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -38,6 +38,7 @@ const tournamentBtnEl = document.getElementById("tournamentBtn");
 const bracketBtnEl = document.getElementById("bracketBtn");
 const freeMatchBtnEl = document.getElementById("freeMatchBtn");
 const practiceBtnEl = document.getElementById("practiceBtn");
+const developmentBtnEl = document.getElementById("developmentBtn");
 const deathmatchBtnEl = document.getElementById("deathmatchBtn");
 const explosiveDeathmatchBtnEl = document.getElementById("explosiveDeathmatchBtn");
 const dragonDeathmatchBtnEl = document.getElementById("dragonDeathmatchBtn");
@@ -59,6 +60,7 @@ const resultTitleEl = document.getElementById("resultTitle");
 const resultScoreEl = document.getElementById("resultScore");
 const tournamentProgressEl = document.getElementById("tournamentProgress");
 const dayCupInfoEl = document.getElementById("dayCupInfo");
+const developmentInfoEl = document.getElementById("developmentInfo");
 const resultActionsEl = document.getElementById("resultActions");
 
 const W = 1280, H = 720;
@@ -90,6 +92,127 @@ let gamePhase="menu";
 let tournamentOpponents=[];
 let tournamentRound=0;
 let dayCup=null;
+const LEAGUE_SAVE_KEY="futsalTrapGame.league.v1";
+const DEVELOPMENT_SAVE_KEY="futsalTrapGame.development.v1";
+let leagueState=null;
+let developmentState=null;
+
+function loadJSON(key,fallback=null){
+  try{ const raw=localStorage.getItem(key); return raw?JSON.parse(raw):fallback; }
+  catch(e){ return fallback; }
+}
+function saveJSON(key,value){
+  try{ localStorage.setItem(key,JSON.stringify(value)); }catch(e){}
+}
+function clearSavedLeague(){
+  try{ localStorage.removeItem(LEAGUE_SAVE_KEY); }catch(e){}
+}
+function leagueSaveForSelected(){
+  const s=loadJSON(LEAGUE_SAVE_KEY,null);
+  return (s && s.selectedTeamId===selectedTeamId && !s.finished) ? s : null;
+}
+function developmentStatsFor(teamId){
+  const all=loadJSON(DEVELOPMENT_SAVE_KEY,{}) || {};
+  return all[teamId] || {speed:0,kick:0,physical:0,titles:0};
+}
+function saveDevelopmentStats(teamId,stats){
+  const all=loadJSON(DEVELOPMENT_SAVE_KEY,{}) || {};
+  all[teamId]=stats;
+  saveJSON(DEVELOPMENT_SAVE_KEY,all);
+}
+function modeTableRows(ids,table){
+  return ids.map(id=>table[id]).sort(standingSort);
+}
+function modeStandingsText(title,ids,table){
+  const out=[title];
+  modeTableRows(ids,table).forEach((r,i)=>{
+    const gd=r.gf-r.ga;
+    out.push(`${i+1}. ${teamDef(r.id).name}  勝点${r.pts}  ${r.gf}-${r.ga}  得失点${gd>=0?"+":""}${gd}`);
+  });
+  return out.join("\n");
+}
+function pickFiveParticipants(){
+  const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId));
+  return [selectedTeamId,...others.slice(0,4)];
+}
+function simulateCpuTable(ids,table,doubleRound=false){
+  const others=ids.filter(id=>id!==selectedTeamId);
+  const rounds=doubleRound?2:1;
+  for(let r=0;r<rounds;r++){
+    for(let i=0;i<others.length;i++){
+      for(let j=i+1;j<others.length;j++){
+        const [a,b]=simulateCpuScore(others[i],others[j],null);
+        addStandingResult(table,others[i],others[j],a,b);
+      }
+    }
+  }
+}
+function buildLeagueState(){
+  const ids=pickFiveParticipants();
+  const table={}; ids.forEach(id=>table[id]=blankStanding(id));
+  simulateCpuTable(ids,table,true);
+  const opp=ids.filter(id=>id!==selectedTeamId);
+  return {
+    selectedTeamId,
+    participants:ids,
+    table,
+    opponents:[...shuffled(opp),...shuffled(opp)],
+    matchIndex:0,
+    finished:false
+  };
+}
+function saveLeagueState(){ if(leagueState) saveJSON(LEAGUE_SAVE_KEY,leagueState); }
+function refreshLeagueButton(){
+  if(tournamentBtnEl) tournamentBtnEl.textContent=leagueSaveForSelected()?"リーグ戦（続きから）":"リーグ戦";
+}
+function startLeague(){
+  gameMode="league";
+  leagueState=leagueSaveForSelected() || buildLeagueState();
+  saveLeagueState();
+  startMatch(leagueState.opponents[leagueState.matchIndex]);
+}
+function registerLeagueResult(){
+  addStandingResult(leagueState.table,selectedTeamId,opponentTeamId,scoreBlue,scoreRed);
+  leagueState.matchIndex++;
+  leagueState.finished=leagueState.matchIndex>=leagueState.opponents.length;
+  saveLeagueState();
+}
+
+function buildDevelopmentState(){
+  const ids=pickFiveParticipants();
+  const table={}; ids.forEach(id=>table[id]=blankStanding(id));
+  simulateCpuTable(ids,table,false);
+  return {
+    selectedTeamId,
+    participants:ids,
+    table,
+    opponents:shuffled(ids.filter(id=>id!==selectedTeamId)),
+    matchIndex:0,
+    finished:false
+  };
+}
+function startDevelopment(){
+  gameMode="development";
+  developmentState=buildDevelopmentState();
+  startMatch(developmentState.opponents[0]);
+}
+function registerDevelopmentResult(){
+  addStandingResult(developmentState.table,selectedTeamId,opponentTeamId,scoreBlue,scoreRed);
+  developmentState.matchIndex++;
+  developmentState.finished=developmentState.matchIndex>=4;
+}
+function applyDevelopmentBonus(kind){
+  const stats=developmentStatsFor(selectedTeamId);
+  stats[kind]=(stats[kind]||0)+1;
+  stats.titles=(stats.titles||0)+1;
+  saveDevelopmentStats(selectedTeamId,stats);
+  developmentInfoEl.textContent=
+    `育成値  走力+${stats.speed} / キック力+${stats.kick} / フィジカル+${stats.physical}`;
+  resultActionsEl.innerHTML="";
+  addResultButton("もう一度育成する",true,startDevelopment);
+  addResultButton("チーム選択へ",false,returnToMainMenu);
+}
+
 let deathmatchState={
   active:false,
   shockTimer:2.2,
@@ -306,6 +429,7 @@ function renderTeamSelection(){
     teamGridEl.appendChild(makeTeamCard(t,(id)=>{
       selectedTeamId=id;
       selectedTeamNameEl.textContent=teamDef(id).name;
+      refreshLeagueButton();
       setMenuScreen(modeScreenEl);
     }));
   }
@@ -376,6 +500,20 @@ function updateScoreLabel(){
 }
 
 function prepareMatch(){
+  const dev=(gameMode==="development") ? developmentStatsFor(selectedTeamId) : {speed:0,kick:0,physical:0};
+  for(const p of [...teams.blue,...teams.red]){
+    p.speed=p.role==="gk"?145:185;
+    p.devKickMult=1;
+    p.devPhysical=0;
+  }
+  if(gameMode==="development"){
+    for(const p of teams.blue){
+      p.speed*=1+dev.speed*.045;
+      p.devKickMult=1+dev.kick*.06;
+      p.devPhysical=dev.physical||0;
+    }
+  }
+
   scoreBlue=0;
   scoreRed=0;
   matchLeft=MATCH_SECONDS;
@@ -544,7 +682,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v102: vertical hazard lines only, evenly spaced.
+  // v103: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -982,7 +1120,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v102: forward is always the attacking direction, never toward own goal.
+  // v103: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -1223,6 +1361,8 @@ function returnToMainMenu(){
   tournamentOpponents=[];
   tournamentRound=0;
   dayCup=null;
+  leagueState=null;
+  developmentState=null;
   deathmatchState.active=false;
   deathmatchState.projectile=null;
   deathmatchState.enemyProjectile=null;
@@ -1232,6 +1372,7 @@ function returnToMainMenu(){
   deathmatchState.explosion=null;
   if(dashBtn) dashBtn.textContent="DASH";
   renderTeamSelection();
+  refreshLeagueButton();
   setMenuScreen(teamScreenEl);
 }
 
@@ -1243,27 +1384,37 @@ function finishMatch(){
   ball.vx=ball.vy=ball.vz=0;
   resultActionsEl.innerHTML="";
   resultScoreEl.textContent=`${scoreBlue} - ${scoreRed}`;
+  tournamentProgressEl.textContent="";
+  dayCupInfoEl.textContent="";
+  developmentInfoEl.textContent="";
+
   resultKickerEl.textContent=
-    gameMode==="tournament" ? `TOURNAMENT ${tournamentRound+1}/4` :
+    gameMode==="league" ? `LEAGUE ${leagueState ? Math.min(leagueState.matchIndex+1,8) : 1}/8` :
+    gameMode==="development" ? `DEVELOPMENT ${developmentState ? Math.min(developmentState.matchIndex+1,4) : 1}/4` :
     gameMode==="daycup" ? (dayCup && dayCup.stage==="final" ? "ONE DAY CUP FINAL" : "ONE DAY CUP") :
     gameMode==="deathmatch" ? "DEATHMATCH" :
     gameMode==="deathmatch-explosive" ? "EXPLOSIVE BALL" :
     gameMode==="deathmatch-dragon" ? "DRAGON DEATHMATCH" :
     "FREE MATCH";
-  tournamentProgressEl.textContent="";
-  dayCupInfoEl.textContent="";
 
   if(gameMode==="free"){
     const rec=addFreeRecord(selectedTeamId,opponentTeamId,scoreBlue,scoreRed);
+    resultTitleEl.textContent=scoreBlue>scoreRed?"WIN":(scoreBlue<scoreRed?"LOSE":"DRAW");
     tournamentProgressEl.textContent=`対戦成績 ${rec.w}勝 ${rec.d}分 ${rec.l}敗`;
-  }
+    addResultButton("再戦",true,()=>startMatch(opponentTeamId));
+    addResultButton("相手を選び直す",false,()=>{
+      gamePhase="menu";
+      renderOpponentSelection();
+      setMenuScreen(opponentScreenEl);
+    });
+    addResultButton("チーム選択へ",false,returnToMainMenu);
 
-  if(gameMode==="daycup"){
+  }else if(gameMode==="daycup"){
     if(dayCup.stage==="group"){
       registerDayCupPlayerResult();
       dayCupInfoEl.textContent=dayCupStandingsText();
-
       const nextOpp=nextPlayerGroupOpponent();
+
       if(nextOpp){
         resultTitleEl.textContent=scoreBlue>scoreRed?"WIN":(scoreBlue<scoreRed?"LOSE":"DRAW");
         tournamentProgressEl.textContent=`グループステージ ${dayCup.playedAgainst.length}/2`;
@@ -1274,10 +1425,7 @@ function finishMatch(){
         const myWinner=groupWinner(dayCup.groups[dayCup.playerGroup],dayCup.table);
         const otherGroup=dayCup.playerGroup==="A"?"B":"A";
         let otherWinner=groupWinner(dayCup.groups[otherGroup],dayCup.table);
-
-        // Opposite-group FS.T is guaranteed to reach the final.
         if(dayCup.groups[otherGroup].includes("fst")) otherWinner="fst";
-
         dayCupInfoEl.textContent=dayCupStandingsText();
 
         if(myWinner!==selectedTeamId){
@@ -1303,60 +1451,75 @@ function finishMatch(){
         resultTitleEl.textContent=scoreBlue<scoreRed?"準優勝":"DRAW";
         tournamentProgressEl.textContent=scoreBlue===scoreRed?"決勝は再戦":"ワンデイ大会 終了";
       }
-
-      if(scoreBlue===scoreRed){
-        addResultButton("決勝再戦",true,()=>startMatch(dayCup.finalOpponent));
-      }else{
-        addResultButton("もう一度",true,startDayCup);
-      }
-      addResultButton("チーム選択へ",false,()=>{
-        renderTeamSelection();
-        returnToMainMenu();
-      });
-    }
-  } else if(gameMode==="tournament"){
-    if(scoreBlue>scoreRed){
-      if(tournamentRound>=3){
-        unlockFst();
-        resultTitleEl.textContent="優勝！";
-        tournamentProgressEl.textContent="4試合勝ち抜き達成 / FS.T 解放";
-        addResultButton("チーム選択へ",true,()=>{
-          renderTeamSelection();
-          returnToMainMenu();
-        });
-      } else {
-        resultTitleEl.textContent="WIN";
-        tournamentProgressEl.textContent=`${tournamentRound+1}勝 / 4勝`;
-        addResultButton("次の試合へ",true,()=>{
-          tournamentRound++;
-          startMatch(tournamentOpponents[tournamentRound]);
-        });
-        addResultButton("終了",false,returnToMainMenu);
-      }
-    } else if(scoreBlue===scoreRed){
-      resultTitleEl.textContent="DRAW";
-      tournamentProgressEl.textContent="勝ち抜くには勝利が必要です";
-      addResultButton("同じ相手と再戦",true,()=>startMatch(tournamentOpponents[tournamentRound]));
-      addResultButton("終了",false,returnToMainMenu);
-    } else {
-      resultTitleEl.textContent="敗退";
-      tournamentProgressEl.textContent=`${tournamentRound}勝で終了`;
-      addResultButton("もう一度挑戦",true,()=>{
-        tournamentRound=0;
-        startMatch(tournamentOpponents[0]);
-      });
+      if(scoreBlue===scoreRed) addResultButton("決勝再戦",true,()=>startMatch(dayCup.finalOpponent));
+      else addResultButton("もう一度",true,startDayCup);
       addResultButton("チーム選択へ",false,returnToMainMenu);
     }
-  } else {
+
+  }else if(gameMode==="league"){
+    registerLeagueResult();
+    dayCupInfoEl.textContent=modeStandingsText("リーグ順位",leagueState.participants,leagueState.table);
+
+    if(!leagueState.finished){
+      resultTitleEl.textContent=scoreBlue>scoreRed?"WIN":(scoreBlue<scoreRed?"LOSE":"DRAW");
+      tournamentProgressEl.textContent=`${leagueState.matchIndex}/8試合終了`;
+      addResultButton("次の試合へ",true,()=>startMatch(leagueState.opponents[leagueState.matchIndex]));
+      addResultButton("ここで終了（続きから再開）",false,()=>{
+        saveLeagueState();
+        returnToMainMenu();
+      });
+    }else{
+      const rows=modeTableRows(leagueState.participants,leagueState.table);
+      const rank=rows.findIndex(r=>r.id===selectedTeamId)+1;
+      if(rank===1){
+        unlockFst();
+        resultTitleEl.textContent="リーグ優勝！";
+        tournamentProgressEl.textContent="全8試合終了 / FS.T 解放";
+      }else{
+        resultTitleEl.textContent=`リーグ ${rank}位`;
+        tournamentProgressEl.textContent="全8試合終了";
+      }
+      clearSavedLeague();
+      refreshLeagueButton();
+      addResultButton("新しいリーグ戦",true,startLeague);
+      addResultButton("チーム選択へ",false,returnToMainMenu);
+    }
+
+  }else if(gameMode==="development"){
+    registerDevelopmentResult();
+    dayCupInfoEl.textContent=modeStandingsText("育成リーグ順位",developmentState.participants,developmentState.table);
+
+    if(!developmentState.finished){
+      resultTitleEl.textContent=scoreBlue>scoreRed?"WIN":(scoreBlue<scoreRed?"LOSE":"DRAW");
+      tournamentProgressEl.textContent=`${developmentState.matchIndex}/4試合終了`;
+      addResultButton("次の試合へ",true,()=>startMatch(developmentState.opponents[developmentState.matchIndex]));
+      addResultButton("育成を終了",false,returnToMainMenu);
+    }else{
+      const rows=modeTableRows(developmentState.participants,developmentState.table);
+      const rank=rows.findIndex(r=>r.id===selectedTeamId)+1;
+      const stats=developmentStatsFor(selectedTeamId);
+      developmentInfoEl.textContent=`現在の育成値  走力+${stats.speed} / キック力+${stats.kick} / フィジカル+${stats.physical}`;
+
+      if(rank===1){
+        resultTitleEl.textContent="育成リーグ優勝！";
+        tournamentProgressEl.textContent="ボーナスを1つ選択";
+        addResultButton("走力を強化",true,()=>applyDevelopmentBonus("speed"));
+        addResultButton("キック力を強化",true,()=>applyDevelopmentBonus("kick"));
+        addResultButton("フィジカルを強化",true,()=>applyDevelopmentBonus("physical"));
+      }else{
+        resultTitleEl.textContent=`育成リーグ ${rank}位`;
+        tournamentProgressEl.textContent="1位になると育成ボーナス獲得";
+        addResultButton("もう一度挑戦",true,startDevelopment);
+        addResultButton("チーム選択へ",false,returnToMainMenu);
+      }
+    }
+
+  }else{
     resultTitleEl.textContent=scoreBlue>scoreRed?"WIN":(scoreBlue<scoreRed?"LOSE":"DRAW");
     addResultButton("再戦",true,()=>startMatch(opponentTeamId));
-    addResultButton("相手を選び直す",false,()=>{
-      gamePhase="menu";
-      renderOpponentSelection();
-      setMenuScreen(opponentScreenEl);
-    });
     addResultButton("チーム選択へ",false,returnToMainMenu);
   }
+
   setMenuScreen(resultScreenEl);
 }
 
@@ -1471,12 +1634,7 @@ function endPractice(){
   gamePhase="menu";
   setMenuScreen(modeScreenEl);
 }
-function startTournament(){
-  gameMode="tournament";
-  tournamentOpponents=TEAM_DEFS.filter(t=>t.id!==selectedTeamId).map(t=>t.id);
-  tournamentRound=0;
-  startMatch(tournamentOpponents[0]);
-}
+function startTournament(){ startLeague(); }
 
 
 let last = performance.now();
@@ -1538,7 +1696,9 @@ function makePlayer(team, x,y, role="field", controlled=false) {
     backDashGuard:0,
     gkFall:0,
     scanTimer:0,
-    headLook:0
+    headLook:0,
+    devKickMult:1,
+    devPhysical:0
   };
 }
 
@@ -1878,6 +2038,7 @@ function kickNearbyLooseBall(p, kind="pass") {
 
 
 function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
+  if(gameMode==="development" && p.team==="blue") speed*=p.devKickMult||1;
   const n=norm(dx,dy);
   ball.owner=null;
   ball.dashProtectTimer=0;
@@ -2012,7 +2173,7 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
-  // v102: TRAP must not vacuum a loose ball from a distance.
+  // v103: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -2063,7 +2224,7 @@ function attemptTrap(p, dt) {
     const slowLoose = speed < 115 && ball.z < 14 && !ball.passTarget && p.autoControlTimer<=0;
 
     if(input.trap || input.trapPressBuffer>0 || (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v102: never stop/snap a ball unless it is genuinely at the feet.
+      // v103: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -2110,7 +2271,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v102: CPU also needs real contact before claiming/stopping the ball.
+      // v103: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -2579,7 +2740,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v102: any AI field player may shoot when the chance is clearly good.
+  // v103: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -2971,7 +3132,7 @@ function updateGK(p,dt) {
 }
 
 function updatePhysics(dt) {
-  // v102: in DEATHMATCH a loose ball must physically reach the feet.
+  // v103: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -3033,7 +3194,7 @@ function updatePhysics(dt) {
     p.autoControlTimer=Math.max(0,p.autoControlTimer-dt);
     p.afterPassRunTimer=Math.max(0,p.afterPassRunTimer-dt);
     p.shoulder=Math.max(0,p.shoulder-dt);
-    p.stagger=Math.max(0,p.stagger-dt);
+    p.stagger=Math.max(0,p.stagger-dt*(1+(p.devPhysical||0)*.10));
     p.backDashGuard=Math.max(0,p.backDashGuard-dt);
     p.gkFall=Math.max(0,p.gkFall-dt);
     p.kickAnim=Math.max(0,p.kickAnim-dt);
@@ -3566,7 +3727,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v102: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v103: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -4696,6 +4857,7 @@ function startTournamentTap(e){
   startTournament();
 }
 bindMenuTap(tournamentBtnEl,startTournament);
+bindMenuTap(developmentBtnEl,startDevelopment);
 let practiceMenuTapLock=false;
 function openPracticeMenu(e){
   if(e && e.preventDefault) e.preventDefault();
@@ -4742,6 +4904,7 @@ opponentBackBtnEl.addEventListener("click",()=>setMenuScreen(modeScreenEl));
 
 renderTeamSelection();
 selectedTeamNameEl.textContent=teamDef(selectedTeamId).name;
+refreshLeagueButton();
 resetKickoff("blue");
 updateScoreLabel();
 setMenuScreen(teamScreenEl);
@@ -4757,7 +4920,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v102";
+  if(v) v.textContent="v103";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v102";
+  if(b) b.textContent="v103";
 });
