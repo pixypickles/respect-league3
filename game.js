@@ -158,7 +158,7 @@ function cpuTryNutmeg(p){
   ball.passTarget=null;
   ball.lastTouch=p;
   ball.passFrom=p;
-  ball.nutmegTimer=.30;
+  ball.nutmegTimer=.40;
   ball.nutmegTeam=p.team;
   ball.nutmegTarget=near.p;
   ball.x=p.x+face.x*22;
@@ -172,8 +172,8 @@ function cpuTryNutmeg(p){
   ball.touchGrace=.15;
   ball.protectedTeam=p.team;
 
-  p.vx=face.x*300;
-  p.vy=face.y*300;
+  p.vx=face.x*370;
+  p.vy=face.y*370;
   p.cooldown=.18;
   return true;
 }
@@ -1481,6 +1481,7 @@ function shoulderCharge(actor) {
 }
 
 function checkSlideSteal(p) {
+  if(nutmegProtectedAgainst(p)) return;
   if(p.slide<=0) return;
   if(ball.owner && ball.owner.team!==p.team && dist(p,ball.owner)<50) {
     const victim=ball.owner;
@@ -2018,6 +2019,18 @@ function updatePhysics(dt) {
   if(ball.stealProtectTimer<=0) ball.stealProtectTeam=null;
   ball.nutmegTimer=Math.max(0,ball.nutmegTimer-dt);
   if(ball.nutmegTimer<=0){
+    const nmAttacker=ball.passFrom;
+    const nmTarget=ball.nutmegTarget;
+
+    // If attacker has completed the run and reached the ball, secure it smoothly.
+    if(nmAttacker && nmTarget && !ball.owner && dist(nmAttacker,ball)<62 && ball.z<22){
+      ball.owner=nmAttacker;
+      ball.vx=ball.vy=ball.vz=0;
+      ball.z=0;
+      ball.lastTouch=nmAttacker;
+      nmAttacker.possessionTime=0;
+    }
+
     ball.nutmegTeam=null;
     ball.nutmegTarget=null;
   }
@@ -2073,6 +2086,7 @@ function updatePhysics(dt) {
   // Keep uninvolved CPU players out of the immediate ball crowd.
   for(const p of all) {
     if(p.controlled || p.role==="gk" || ball.owner===p || ball.passTarget===p) continue;
+    if(ball.nutmegTimer>0 && (p===ball.nutmegTarget || p===ball.passFrom)) continue;
 
     let allowedNear=false;
     if(ball.owner && ball.owner.team!==p.team) {
@@ -2099,7 +2113,11 @@ function updatePhysics(dt) {
     }
   }
   for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
-    const a=all[i],b=all[j], d=dist(a,b);
+    const a=all[i],b=all[j];
+    // v72: successful nutmeg lets attacker physically ghost through the target defender.
+    if(nutmegGhostPair(a,b)) continue;
+
+    const d=dist(a,b);
     if(d<PLAYER_R*2.05 && d>0){
       const n=norm(a.x-b.x,a.y-b.y), push=(PLAYER_R*2.05-d)*.48;
       a.x+=n.x*push;b.x-=n.x*push;a.y+=n.y*push;b.y-=n.y*push;
@@ -2709,7 +2727,7 @@ function tryNutmeg(attacker){
   ball.passTarget=null;
   ball.lastTouch=attacker;
   ball.passFrom=attacker;
-  ball.nutmegTimer=.34;
+  ball.nutmegTimer=.46;
   ball.nutmegTeam=attacker.team;
   ball.nutmegTarget=defender;
 
@@ -2726,16 +2744,28 @@ function tryNutmeg(attacker){
   ball.protectedTeam=attacker.team;
 
   // Attacker follows with a fast burst.
-  input.dashTimer=.34;
+  input.dashTimer=.42;
   input.dashCooldown=.48;
-  attacker.vx=face.x*330;
-  attacker.vy=face.y*330;
+  attacker.vx=face.x*410;
+  attacker.vy=face.y*410;
   attacker.dirX=face.x;
   attacker.dirY=face.y;
   attacker.cooldown=.12;
 
   showMessage("NUTMEG!",.34);
   return true;
+}
+
+
+function nutmegGhostPair(a,b){
+  if(ball.nutmegTimer<=0 || !ball.nutmegTarget || !ball.passFrom) return false;
+  const attacker=ball.passFrom;
+  const defender=ball.nutmegTarget;
+  return (a===attacker && b===defender) || (a===defender && b===attacker);
+}
+
+function nutmegAttackerGhost(p){
+  return ball.nutmegTimer>0 && ball.passFrom===p && !!ball.nutmegTarget;
 }
 
 function nutmegProtectedAgainst(p){
