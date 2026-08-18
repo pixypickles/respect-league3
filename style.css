@@ -804,3 +804,8 @@ body {
   background:linear-gradient(180deg,#2563eb,#1d4ed8);
   border-color:rgba(147,197,253,.9);
 }
+
+#trainedChoiceStats{
+  white-space:pre-line;
+  margin:12px auto 18px;
+}
