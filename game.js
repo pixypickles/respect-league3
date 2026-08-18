@@ -2728,7 +2728,11 @@ setInterval(()=>{
 },16);
 
 
-tournamentBtnEl.addEventListener("click",startTournament);
+function startTournamentTap(e){
+  if(e && e.preventDefault) e.preventDefault();
+  startTournament();
+}
+bindMenuTap(tournamentBtnEl,startTournament);
 let practiceMenuTapLock=false;
 function openPracticeMenu(e){
   if(e && e.preventDefault) e.preventDefault();
@@ -2756,9 +2760,9 @@ bindMenuTap(partnerPracticeBtnEl,()=>startPractice("partner"));
 bindMenuTap(practiceBackBtnEl,()=>setMenuScreen(modeScreenEl));
 tutorialExitBtnEl.addEventListener("click",endPractice);
 
-bracketBtnEl.addEventListener("click",startBracketTournament);
+bindMenuTap(bracketBtnEl,startBracketTournament);
 
-freeMatchBtnEl.addEventListener("click",()=>{
+bindMenuTap(freeMatchBtnEl,()=>{
   renderOpponentSelection();
   setMenuScreen(opponentScreenEl);
 });
