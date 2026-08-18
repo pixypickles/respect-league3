@@ -621,3 +621,11 @@ body {
     height: min(7.8vw, 82px) !important;
   }
 }
+
+.team-record{
+  display:block;
+  margin-top:4px;
+  font-size:clamp(10px,1.3vw,13px);
+  opacity:.72;
+  font-weight:800;
+}

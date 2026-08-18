@@ -52,7 +52,7 @@ const COURT = { x: 205, y: 62, w: 870, h: 596 };
 const GOAL_H = 210;
 const PLAYER_R = 20;
 const BALL_R = 9;
-const MATCH_SECONDS = 180;
+const MATCH_SECONDS = 120;
 
 const BLUE = "#2563eb";
 const RED = "#dc2626";
@@ -85,6 +85,65 @@ function teamDef(id){
 }
 function sideTeam(side){
   return side==="blue" ? teamDef(selectedTeamId) : teamDef(opponentTeamId);
+}
+
+
+const TEAM_AI = {
+  "blizzard":   {pass:0.90, dribble:0.18, nutmeg:0.04, midShot:0.14, hold:.62, gk:1.28, post:false},
+  "salvida-a":  {pass:0.72, dribble:0.28, nutmeg:0.05, midShot:0.10, hold:.78, gk:1.00, post:true},
+  "salvida-b":  {pass:0.28, dribble:0.88, nutmeg:0.72, midShot:0.12, hold:.46, gk:1.00, post:false},
+  "takezo":     {pass:0.58, dribble:0.58, nutmeg:0.22, midShot:0.18, hold:.60, gk:1.00, post:false},
+  "manchester-p":{pass:0.42, dribble:0.38, nutmeg:0.08, midShot:0.78, hold:.54, gk:1.00, post:false}
+};
+
+function aiProfileFor(p){
+  return TEAM_AI[sideTeam(p.team).id] || TEAM_AI["takezo"];
+}
+
+function postTargetFor(p){
+  const mates=teamPlayers(p.team).filter(q=>q!==p && q.role!=="gk");
+  const goalX=p.team==="blue"?COURT.x+COURT.w:COURT.x;
+  return mates
+    .slice()
+    .sort((a,b)=>{
+      const ac=Math.abs(a.y-H/2), bc=Math.abs(b.y-H/2);
+      const ag=Math.abs(goalX-a.x), bg=Math.abs(goalX-b.x);
+      return (ag+ac*.55)-(bg+bc*.55);
+    })[0] || null;
+}
+
+function cpuTryNutmeg(p){
+  const prof=aiProfileFor(p);
+  if(prof.nutmeg<=0 || ball.owner!==p || p.cooldown>0) return false;
+  const near=closestOpponent(p);
+  if(!near.p || near.d>82 || Math.random()>prof.nutmeg) return false;
+
+  const face=norm(p.dirX,p.dirY);
+  const to=norm(near.p.x-p.x,near.p.y-p.y);
+  if(face.x*to.x+face.y*to.y<.20) return false;
+
+  ball.owner=null;
+  ball.passTarget=null;
+  ball.lastTouch=p;
+  ball.passFrom=p;
+  ball.nutmegTimer=.30;
+  ball.nutmegTeam=p.team;
+  ball.nutmegTarget=near.p;
+  ball.x=p.x+face.x*22;
+  ball.y=p.y+16+face.y*7;
+  ball.z=2;
+  ball.vx=face.x*480;
+  ball.vy=face.y*480;
+  ball.vz=6;
+  ball.shot=false;
+  ball.power=480;
+  ball.touchGrace=.15;
+  ball.protectedTeam=p.team;
+
+  p.vx=face.x*300;
+  p.vy=face.y*300;
+  p.cooldown=.18;
+  return true;
 }
 
 
@@ -138,14 +197,61 @@ function renderTeamSelection(){
   }
 }
 
+
+const FREE_RECORD_KEY="futsalTrapGame.freeRecords.v1";
+
+function loadFreeRecords(){
+  try{
+    const raw=localStorage.getItem(FREE_RECORD_KEY);
+    return raw ? JSON.parse(raw) : {};
+  }catch(e){
+    return {};
+  }
+}
+
+function saveFreeRecords(records){
+  try{
+    localStorage.setItem(FREE_RECORD_KEY,JSON.stringify(records));
+  }catch(e){}
+}
+
+function freeRecordKey(a,b){
+  return `${a}__${b}`;
+}
+
+function getFreeRecord(a,b){
+  const rec=loadFreeRecords()[freeRecordKey(a,b)];
+  return rec || {w:0,d:0,l:0,gf:0,ga:0};
+}
+
+function addFreeRecord(a,b,gf,ga){
+  const all=loadFreeRecords();
+  const key=freeRecordKey(a,b);
+  const rec=all[key] || {w:0,d:0,l:0,gf:0,ga:0};
+  if(gf>ga) rec.w++;
+  else if(gf<ga) rec.l++;
+  else rec.d++;
+  rec.gf+=gf;
+  rec.ga+=ga;
+  all[key]=rec;
+  saveFreeRecords(all);
+  return rec;
+}
+
 function renderOpponentSelection(){
   opponentGridEl.innerHTML="";
   for(const t of TEAM_DEFS){
     if(t.id===selectedTeamId) continue;
-    opponentGridEl.appendChild(makeTeamCard(t,(id)=>{
+    const card=makeTeamCard(t,(id)=>{
       gameMode="free";
       startMatch(id);
-    }));
+    });
+    const rec=getFreeRecord(selectedTeamId,t.id);
+    const record=document.createElement("small");
+    record.className="team-record";
+    record.textContent=`${rec.w}勝 ${rec.d}分 ${rec.l}敗`;
+    card.appendChild(record);
+    opponentGridEl.appendChild(card);
   }
 }
 
@@ -168,7 +274,7 @@ function prepareMatch(){
     input.pendingShotTimer=null;
   }
   updateScoreLabel();
-  clockEl.textContent="3:00";
+  clockEl.textContent="2:00";
   resetKickoff("blue");
 }
 
@@ -205,6 +311,11 @@ function finishMatch(){
   resultScoreEl.textContent=`${scoreBlue} - ${scoreRed}`;
   resultKickerEl.textContent=gameMode==="tournament" ? `TOURNAMENT ${tournamentRound+1}/4` : "FREE MATCH";
   tournamentProgressEl.textContent="";
+
+  if(gameMode==="free"){
+    const rec=addFreeRecord(selectedTeamId,opponentTeamId,scoreBlue,scoreRed);
+    tournamentProgressEl.textContent=`対戦成績 ${rec.w}勝 ${rec.d}分 ${rec.l}敗`;
+  }
 
   if(gameMode==="tournament"){
     if(scoreBlue>scoreRed){
@@ -1281,6 +1392,16 @@ function aiMoveOffBall(p,dt) {
     }
   }
 
+  const offProf=aiProfileFor(p);
+  if(offProf.post){
+    const attack=p.team==="blue"?1:-1;
+    const goalX=p.team==="blue"?COURT.x+COURT.w:COURT.x;
+    const advanced=Math.abs(goalX-p.x)<310;
+    if(advanced){
+      tx+=attack*34;
+      ty=lerp(ty,H/2,.38);
+    }
+  }
   const n=norm(tx-p.x,ty-p.y);
   if(n.m>8){p.dirX=n.x;p.dirY=n.y;}
 
@@ -1309,14 +1430,19 @@ function aiWithBall(p,dt) {
   }
   const near=closestOpponent(p);
   const attack=p.team==="blue"?1:-1;
+  const prof=aiProfileFor(p);
 
   // Under pressure, only play a pass if there is a genuinely safe lane.
   // Otherwise shield/step away briefly instead of machine-gunning tiny passes.
   if(near.d<92 && p.cooldown<=.08 && p.receiveLock<=0) {
-    const target=safeCpuPassTarget(p);
+    let target=safeCpuPassTarget(p);
+    if(prof.post){
+      const post=postTargetFor(p);
+      if(post && dist(p,post)<330) target=post;
+    }
 
     // Enemy CPU deliberately takes an extra touch before releasing under pressure.
-    const canRelease = p.team==="red" ? p.possessionTime>.95 : p.possessionTime>.45;
+    const canRelease = p.possessionTime > prof.hold;
 
     if(target && canRelease) {
       doPass(p,target);
@@ -1329,19 +1455,26 @@ function aiWithBall(p,dt) {
   const goalDist=Math.hypot(goalX-p.x,goalY-p.y);
 
   // CPU prefers passing. Dribble only when clearly unpressured.
-  if(p.aiTimer<=0 && p.receiveLock<=0 && p.possessionTime>(p.team==="red"?.85:.42)) {
-    p.aiTimer = p.team==="red" ? rand(.90,1.35) : rand(.48,.72);
+  if(p.aiTimer<=0 && p.receiveLock<=0 && p.possessionTime>prof.hold) {
+    p.aiTimer=rand(.58,1.05);
 
-    if(goalDist<260 && Math.abs(p.y-goalY)<180 && near.d>90) {
-      const aimY=goalY+rand(-75,75);
-      kickBall(p,goalX-p.x,aimY-p.y,rand(470,610),rand(18,48),true,null);
+    if(prof.nutmeg>.20 && near.d<86 && cpuTryNutmeg(p)) return;
+
+    const middleRange=prof.midShot>.5 ? 390 : 260;
+    const shotChance=prof.midShot>.5 ? prof.midShot : .82;
+    if(goalDist<middleRange && Math.abs(p.y-goalY)<205 && near.d>68 && Math.random()<shotChance) {
+      const aimY=goalY+rand(-82,82);
+      const shotSpeed=prof.midShot>.5 ? rand(520,650) : rand(470,610);
+      kickBall(p,goalX-p.x,aimY-p.y,shotSpeed,rand(16,42),true,null);
       return;
     }
 
     let target=safeCpuPassTarget(p);
-    const passChance = p.team==="red" ? .34 : .72;
-    const pressureRange = p.team==="red" ? 118 : 190;
-    if(target && (near.d<pressureRange || Math.random()<passChance)) {
+    if(prof.post){
+      const post=postTargetFor(p);
+      if(post && dist(p,post)<360) target=post;
+    }
+    if(target && (near.d<155 || Math.random()<prof.pass)) {
       doPass(p,target);
       return;
     }
@@ -1352,8 +1485,8 @@ function aiWithBall(p,dt) {
   if(p.team==="red"){
     // Enemy CPU can now keep possession, scan, and occasionally carry the ball.
     if(near.d>250){
-      // Plenty of room: dribble forward, but not at full speed.
-      dx=attack*.72;
+      // Team personality changes how directly CPU carries into space.
+      dx=attack*(.42+prof.dribble*.55);
       dy=clamp((goalY-p.y)/260,-.42,.42);
     } else if(near.d>135){
       // Medium pressure: slow down and look around instead of instantly passing.
@@ -1376,7 +1509,7 @@ function aiWithBall(p,dt) {
   }
   const n=norm(dx,dy);
   p.dirX=n.x;p.dirY=n.y;
-  const carrySpeed = p.team==="red" ? .58 : .72;
+  const carrySpeed = .48 + prof.dribble*.32;
   p.vx=lerp(p.vx,n.x*p.speed*carrySpeed,dt*4);
   p.vy=lerp(p.vy,n.y*p.speed*carrySpeed,dt*4);
   ball.x=p.x+n.x*18; ball.y=p.y+20+n.y*6;ball.z=0;ball.vx=p.vx;ball.vy=p.vy;
@@ -1508,6 +1641,7 @@ function updateGK(p,dt) {
   }
 
   if(gamePhase==="practice" && p.team==="blue") return;
+  const gkStrength=aiProfileFor(p).gk || 1;
   const ownLeft=p.team==="blue";
   const gx=ownLeft?COURT.x+30:COURT.x+COURT.w-30;
   const gy=clamp(ball.y,H/2-GOAL_H/2+25,H/2+GOAL_H/2-25);
@@ -1516,7 +1650,7 @@ function updateGK(p,dt) {
   p.x=lerp(p.x,gx,dt*6);
   p.y=lerp(p.y,targetY,dt*3.5);
 
-  const danger = !ball.owner && ball.shot && ball.z<60 && dist(p,ball)<62;
+  const danger = !ball.owner && ball.shot && ball.z<60 && dist(p,ball)<62*gkStrength;
 
   // v56: slow loose balls / soft passes in the keeper's body line must never be ignored.
   const ballSpeed=Math.hypot(ball.vx,ball.vy);
@@ -1560,7 +1694,7 @@ function updateGK(p,dt) {
     // Shots toward the edges remain difficult for the keeper.
     const centerFactor=1-clamp(Math.abs(ball.y-H/2)/(GOAL_H*.5),0,1);
     const strong=ball.power>590;
-    const saveChance=strong ? (.10+.28*centerFactor) : (.58+.28*centerFactor);
+    const saveChance=clamp((strong ? (.10+.28*centerFactor) : (.58+.28*centerFactor))*gkStrength,0,0.96);
 
     if(Math.random()<saveChance) {
       // Normal automatic saves are mainly parries.
