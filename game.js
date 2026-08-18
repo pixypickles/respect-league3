@@ -1,7 +1,8 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v90";
+const GAME_VERSION="v91";
 let foulPause=0;
 let pendingFreeKick=null;
+const foulOverlayEl=document.getElementById("foulOverlay");
 
 (() => {
 "use strict";
@@ -947,7 +948,7 @@ function resetKickoff(team="blue") {
   ball.stealProtectTimer=0; ball.stealProtectTeam=null;
   foulPause=0;
   pendingFreeKick=null;
-  if(foulOverlayEl) foulOverlayEl.classList.add("hidden");
+  if(foulOverlayEl) if(foulOverlayEl) foulOverlayEl.classList.add("hidden");
   starter.possessionTime=0;
 }
 
@@ -3273,9 +3274,7 @@ function awardFreeKick(fouledPlayer, offender){
   pendingFreeKick={fouledPlayer, offender, team, attack, spotX, spotY};
   foulPause=1.15;
 
-  if(foulOverlayEl){
-    foulOverlayEl.classList.remove("hidden");
-  }
+  if(foulOverlayEl) foulOverlayEl.classList.remove("hidden");
 
   return true;
 }
@@ -3331,9 +3330,7 @@ function resumeFreeKick(){
 
   pendingFreeKick=null;
 
-  if(foulOverlayEl){
-    foulOverlayEl.classList.add("hidden");
-  }
+  if(foulOverlayEl) foulOverlayEl.classList.add("hidden");
 
   showMessage("FREE KICK",.45);
 }
@@ -3936,7 +3933,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v90";
+  if(v) v.textContent="v91";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v90";
+  if(b) b.textContent="v91";
 });

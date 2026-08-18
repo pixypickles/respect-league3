@@ -695,3 +695,11 @@ GitHub Pagesへそのまま配置して遊べます。
 - 古いversionTagとは別系統で必ず見えるようにした
 - foulPause / pendingFreeKick をGAME_VERSION直後のトップレベルへ強制配置
 - runtime error発生時はバッジが「v89 ERROR」に変わる
+
+## v91 foulOverlayEl エラー修正
+- `foulOverlayEl is not defined` を修正
+- foulOverlayEl をトップレベルで確実に定義
+- resetKickoff より前に宣言されるよう配置
+- foulOverlayEl が取得できない場合でも落ちないよう全参照をnull-safe化
+- game.js?v=91でキャッシュ回避
+- 黄色いv91表示は維持
