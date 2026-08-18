@@ -60,11 +60,11 @@ const SKIN = "#ffd2ad";
 const DARK = "#1f2937";
 
 const TEAM_DEFS = [
-  {id:"blizzard", name:"BLIZZARD FOX", kit:"blizzard", primary:"#f8fafc", secondary:"#2563eb"},
-  {id:"salvida-a", name:"SALVIDA A", kit:"salvida-a", primary:"#7a1832", secondary:"#7a1832"},
-  {id:"salvida-b", name:"SALVIDA B", kit:"salvida-b", primary:"#22c7c4", secondary:"#22c7c4"},
-  {id:"takezo", name:"TAKE-ZO", kit:"takezo", primary:"#f05aa6", secondary:"#172554"},
-  {id:"manchester-p", name:"漫チェスターP", kit:"manchester-p", primary:"#081a3a", secondary:"#081a3a"}
+  {id:"blizzard", name:"BLIZZARD FOX", kit:"blizzard", primary:"#f8fafc", secondary:"#2563eb", sleeve:"#2563eb"},
+  {id:"salvida-a", name:"SALVIDA A", kit:"salvida-a", primary:"#7a1832", secondary:"#7a1832", sleeve:"#ffffff"},
+  {id:"salvida-b", name:"SALVIDA B", kit:"salvida-b", primary:"#22c7c4", secondary:"#22c7c4", sleeve:"#ffffff"},
+  {id:"takezo", name:"TAKE-ZO", kit:"takezo", primary:"#f05aa6", secondary:"#172554", sleeve:"#f05aa6", sleeve2:"#172554"},
+  {id:"manchester-p", name:"漫チェスターP", kit:"manchester-p", primary:"#081a3a", secondary:"#081a3a", sleeve:"#081a3a"}
 ];
 
 let selectedTeamId="blizzard";
@@ -1768,6 +1768,34 @@ function drawCourt() {
 }
 
 
+function drawKitSleeves(p){
+  const kit=sideTeam(p.team);
+  const sleeve=kit.sleeve || kit.primary;
+  ctx.lineCap="round";
+  ctx.lineWidth=10;
+
+  if(kit.kit==="takezo"){
+    ctx.strokeStyle=kit.sleeve || "#f05aa6";
+    ctx.beginPath();
+    ctx.moveTo(-10,-7); ctx.lineTo(-16,-2);
+    ctx.moveTo(11,-7); ctx.lineTo(17,-2);
+    ctx.stroke();
+
+    ctx.strokeStyle=kit.sleeve2 || "#172554";
+    ctx.lineWidth=4;
+    ctx.beginPath();
+    ctx.moveTo(-14,-4); ctx.lineTo(-18,-1);
+    ctx.moveTo(15,-4); ctx.lineTo(19,-1);
+    ctx.stroke();
+  }else{
+    ctx.strokeStyle=sleeve;
+    ctx.beginPath();
+    ctx.moveTo(-10,-7); ctx.lineTo(-17,-1);
+    ctx.moveTo(11,-7); ctx.lineTo(18,-1);
+    ctx.stroke();
+  }
+}
+
 function drawKitTorso(p){
   const kit=sideTeam(p.team);
   ctx.save();
@@ -1853,10 +1881,11 @@ function drawPlayer(p) {
 
     drawKitTorso(p);
 
+    drawKitSleeves(p);
     ctx.strokeStyle=SKIN;ctx.lineWidth=6;
     ctx.beginPath();
-    ctx.moveTo(-10,-6);ctx.lineTo(-23,2);
-    ctx.moveTo(11,-6);ctx.lineTo(24,-2);
+    ctx.moveTo(-17,-1);ctx.lineTo(-23,2);
+    ctx.moveTo(18,-1);ctx.lineTo(24,-2);
     ctx.stroke();
 
     ctx.fillStyle=SKIN;
@@ -1896,9 +1925,13 @@ function drawPlayer(p) {
   // body
   drawKitTorso(p);
 
-  // arms
+  // short sleeves + forearms
+  drawKitSleeves(p);
   ctx.strokeStyle=SKIN;ctx.lineWidth=6;
-  ctx.beginPath();ctx.moveTo(-10,-7);ctx.lineTo(-19,8+swing*.35);ctx.moveTo(11,-7);ctx.lineTo(20,7-swing*.35);ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-17,-1);ctx.lineTo(-19,8+swing*.35);
+  ctx.moveTo(18,-1);ctx.lineTo(20,7-swing*.35);
+  ctx.stroke();
 
   // Head stays upright, but CPU can glance left/right while scanning.
   const headShift = p.controlled ? 0 : p.headLook*4.5;
