@@ -474,7 +474,9 @@ const ball = {
   protectedTeam:null,
   cpuPassProtect:0,
   dashProtectTimer:0,
-  dashProtectTeam:null
+  dashProtectTeam:null,
+  stealSecureTimer:0,
+  stealSecurePlayer:null
 };
 
 function resetKickoff(team="blue") {
@@ -931,6 +933,19 @@ function attemptTrap(p, dt) {
   return false;
 }
 
+
+function beginStealSecure(p,vx=0,vy=0){
+  ball.owner=null;
+  ball.passTarget=null;
+  ball.stealSecurePlayer=p;
+  ball.stealSecureTimer=.10;
+  ball.vx=vx;
+  ball.vy=vy;
+  ball.vz=Math.min(ball.vz,8);
+  ball.touchGrace=.06;
+  ball.protectedTeam=p.team;
+}
+
 function shortTrapSteal(actor) {
   if(!actor || actor.role==="gk" || actor.cooldown>0 || actor.stagger>0) return false;
 
@@ -949,15 +964,11 @@ function shortTrapSteal(actor) {
 
     ball.owner=null;
     ball.passTarget=null;
-    ball.x=enemyOwner.x-face.x*10;
-    ball.y=enemyOwner.y-face.y*10;
+    ball.x=enemyOwner.x-face.x*8;
+    ball.y=enemyOwner.y+10-face.y*5;
     ball.z=4;
-    ball.vx=face.x*110;
-    ball.vy=face.y*110;
-    ball.vz=18;
     ball.lastTouch=actor;
-    ball.touchGrace=.12;
-    ball.protectedTeam=actor.team;
+    beginStealSecure(actor,face.x*70,face.y*70);
 
     actor.kickAnim=.14;
     actor.cooldown=.28;
@@ -1133,7 +1144,7 @@ function updateControlled(p,dt) {
     // Core mechanic: holding trap is required to keep dribbling.
     if(input.trap || p.autoControlTimer>0 || (input.shootDown && input.shootBallLock)) {
       const n=norm(p.dirX,p.dirY);
-      ball.x=p.x+n.x*31; ball.y=p.y+n.y*31; ball.z=0;
+      ball.x=p.x+n.x*18; ball.y=p.y+20+n.y*6; ball.z=0;
       ball.vx=p.vx; ball.vy=p.vy;
     } else if(p.possessionTime>.10) {
       const n=norm(p.dirX,p.dirY);
@@ -1340,7 +1351,7 @@ function aiWithBall(p,dt) {
   const carrySpeed = p.team==="red" ? .58 : .72;
   p.vx=lerp(p.vx,n.x*p.speed*carrySpeed,dt*4);
   p.vy=lerp(p.vy,n.y*p.speed*carrySpeed,dt*4);
-  ball.x=p.x+n.x*31;ball.y=p.y+n.y*31;ball.z=0;ball.vx=p.vx;ball.vy=p.vy;
+  ball.x=p.x+n.x*18; ball.y=p.y+20+n.y*6;ball.z=0;ball.vx=p.vx;ball.vy=p.vy;
 }
 
 function updateAI(p,dt) {
@@ -1496,6 +1507,18 @@ function updatePhysics(dt) {
   input.actionPriorityTimer=Math.max(0,input.actionPriorityTimer-dt);
   input.postKickNoAutoTrap=Math.max(0,input.postKickNoAutoTrap-dt);
   ball.touchGrace=Math.max(0,ball.touchGrace-dt);
+  ball.stealSecureTimer=Math.max(0,ball.stealSecureTimer-dt);
+  if(ball.stealSecurePlayer && ball.stealSecureTimer<=0 && !ball.owner){
+    const sp=ball.stealSecurePlayer;
+    if(dist(sp,ball)<46 && ball.z<18){
+      ball.owner=sp;
+      ball.vx=ball.vy=ball.vz=0;
+      ball.z=0;
+      ball.lastTouch=sp;
+      sp.possessionTime=0;
+    }
+    ball.stealSecurePlayer=null;
+  }
   ball.cpuPassProtect=Math.max(0,ball.cpuPassProtect-dt);
   ball.dashProtectTimer=Math.max(0,ball.dashProtectTimer-dt);
   if(ball.dashProtectTimer<=0) ball.dashProtectTeam=null;
@@ -1983,14 +2006,9 @@ function manualTrapCutProtectedBall(p){
 
   ball.dashProtectTimer=0;
   ball.dashProtectTeam=null;
-  ball.owner=p;
-  ball.passTarget=null;
-  ball.vx=ball.vy=ball.vz=0;
-  ball.z=0;
+  const n=norm(p.dirX,p.dirY);
+  beginStealSecure(p,n.x*45,n.y*45);
   ball.lastTouch=p;
-  ball.touchGrace=.14;
-  ball.protectedTeam=p.team;
-  p.possessionTime=0;
   p.kickAnim=.14;
   showMessage("TRAP CUT!",.34);
   return true;
