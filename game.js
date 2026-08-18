@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v95";
+const GAME_VERSION="v96";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -93,6 +93,9 @@ let deathmatchState={
   shockTimer:2.2,
   shockFlash:0,
   projectile:null,
+  enemyProjectile:null,
+  enemyBazookaUser:null,
+  enemyFireTimer:1.8,
   explosion:null,
   lines:[]
 };
@@ -534,7 +537,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v95: vertical hazard lines only, evenly spaced.
+  // v96: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -550,12 +553,19 @@ function startDeathmatch(){
   deathmatchState.shockTimer=rand(2.4,3.8);
   deathmatchState.shockFlash=0;
   deathmatchState.projectile=null;
+  deathmatchState.enemyProjectile=null;
+  deathmatchState.enemyBazookaUser=null;
+  deathmatchState.enemyFireTimer=rand(1.4,2.5);
   deathmatchState.explosion=null;
   setupDeathmatchLines();
 
   const pool=TEAM_DEFS.filter(t=>t.id!==selectedTeamId);
   const opp=pool[Math.floor(Math.random()*pool.length)]?.id || "takezo";
   startMatch(opp);
+
+  // Give exactly one enemy field player a bazooka.
+  deathmatchState.enemyBazookaUser=
+    teams.red.find(p=>p.role!=="gk") || null;
 }
 
 function lineDistanceToPlayer(line,p){
@@ -574,25 +584,23 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // "Forward" follows the player's current horizontal facing.
-  // The bazooka is limited to the forward 180-degree hemisphere.
-  const forwardSign = p.dirX<0 ? -1 : 1;
+  // v96: forward is always the attacking direction, never toward own goal.
+  const forwardSign = p.team==="blue" ? 1 : -1;
 
-  // No stick input = straight ahead.
+  // No stick input = straight toward opponent goal.
   if(Math.hypot(input.sx,input.sy)<.18){
     return {x:forwardSign,y:0,angle:0};
   }
 
-  // Convert joystick direction to an angle relative to forward.
-  // Positive screen-Y means downward.
-  const relX=input.sx*forwardSign;
-  const relY=input.sy;
-  let deg=Math.atan2(relY,relX)*180/Math.PI;
+  // Convert stick direction to an angle relative to the attacking direction.
+  let relX=input.sx*forwardSign;
+  let relY=input.sy;
 
-  // Clamp to the forward hemisphere.
+  // Even if the stick points backward, clamp it into the forward hemisphere.
+  let deg=Math.atan2(relY,Math.max(0,relX))*180/Math.PI;
   deg=clamp(deg,-90,90);
 
-  // Quantize to 30-degree steps: exactly 7 possible angles.
+  // Seven fixed directions in 30-degree steps.
   deg=Math.round(deg/30)*30;
   deg=clamp(deg,-90,90);
 
@@ -621,7 +629,6 @@ function fireBazooka(p){
 }
 
 function explodeBazooka(x,y,owner){
-  deathmatchState.projectile=null;
   deathmatchState.explosion={x,y,t:.34};
 
   for(const p of [...teams.blue,...teams.red]){
@@ -654,6 +661,72 @@ function explodeBazooka(x,y,owner){
   }
 }
 
+
+function enemyBazookaAim(p){
+  const c=controlled();
+  if(!p || !c) return {x:-1,y:0};
+
+  const attackSign=p.team==="blue"?1:-1;
+  const raw=norm(c.x-p.x,c.y-p.y);
+
+  // Never allow backward shot relative to attack direction.
+  let relX=raw.x*attackSign;
+  let relY=raw.y;
+  let deg=Math.atan2(relY,Math.max(0,relX))*180/Math.PI;
+  deg=clamp(deg,-90,90);
+  deg=Math.round(deg/30)*30;
+
+  const rad=deg*Math.PI/180;
+  return {x:Math.cos(rad)*attackSign,y:Math.sin(rad)};
+}
+
+function fireEnemyBazooka(p){
+  if(!deathmatchState.active || !p || p.stagger>0 || deathmatchState.enemyProjectile) return false;
+
+  const n=enemyBazookaAim(p);
+  deathmatchState.enemyProjectile={
+    x:p.x+n.x*26,
+    y:p.y+n.y*26,
+    vx:n.x*560,
+    vy:n.y*560,
+    team:p.team,
+    owner:p,
+    life:1.8
+  };
+  p.kickAnim=.12;
+  return true;
+}
+
+function updateBazookaProjectile(pr,dt,isEnemy=false){
+  if(!pr) return null;
+
+  pr.life-=dt;
+  pr.x+=pr.vx*dt;
+  pr.y+=pr.vy*dt;
+
+  let hit=
+    pr.x<COURT.x || pr.x>COURT.x+COURT.w ||
+    pr.y<COURT.y || pr.y>COURT.y+COURT.h;
+
+  if(!hit){
+    for(const p of [...teams.blue,...teams.red]){
+      if(p===pr.owner) continue;
+      if(Math.hypot(p.x-pr.x,p.y-pr.y)<24){
+        hit=true;
+        break;
+      }
+    }
+  }
+
+  if(hit || pr.life<=0){
+    explodeBazooka(pr.x,pr.y,pr.owner);
+    if(isEnemy) deathmatchState.enemyProjectile=null;
+    else deathmatchState.projectile=null;
+    return null;
+  }
+  return pr;
+}
+
 function updateDeathmatch(dt){
   if(!deathmatchState.active) return;
 
@@ -664,19 +737,28 @@ function updateDeathmatch(dt){
     deathmatchState.shockTimer=rand(2.7,4.2);
   }
 
-  const pr=deathmatchState.projectile;
-  if(pr){
-    pr.life-=dt;
-    pr.x+=pr.vx*dt;
-    pr.y+=pr.vy*dt;
-    let hit=pr.x<COURT.x || pr.x>COURT.x+COURT.w || pr.y<COURT.y || pr.y>COURT.y+COURT.h;
-    if(!hit){
-      for(const p of [...teams.blue,...teams.red]){
-        if(p===pr.owner) continue;
-        if(Math.hypot(p.x-pr.x,p.y-pr.y)<24){hit=true;break;}
+  if(deathmatchState.projectile){
+    updateBazookaProjectile(deathmatchState.projectile,dt,false);
+  }
+
+  if(deathmatchState.enemyProjectile){
+    updateBazookaProjectile(deathmatchState.enemyProjectile,dt,true);
+  }
+
+  const gunner=deathmatchState.enemyBazookaUser;
+  if(gunner && gunner.stagger<=0){
+    deathmatchState.enemyFireTimer-=dt;
+    if(deathmatchState.enemyFireTimer<=0){
+      const c=controlled();
+      const dx=(c.x-gunner.x)*(gunner.team==="blue"?1:-1);
+      const d=dist(gunner,c);
+
+      // Fire when player is reasonably in front and not too far away.
+      if(dx>-20 && d<650){
+        fireEnemyBazooka(gunner);
       }
+      deathmatchState.enemyFireTimer=rand(1.8,3.2);
     }
-    if(hit || pr.life<=0) explodeBazooka(pr.x,pr.y,pr.owner);
   }
 
   if(deathmatchState.explosion){
@@ -696,10 +778,12 @@ function drawDeathmatchEffects(){
     ctx.shadowBlur=deathmatchState.shockFlash>0 ? 15 : 6;
     ctx.beginPath();ctx.moveTo(line.x1,line.y1);ctx.lineTo(line.x2,line.y2);ctx.stroke();
   }
-  const pr=deathmatchState.projectile;
-  if(pr){
-    ctx.fillStyle="#111827";ctx.beginPath();ctx.arc(pr.x,pr.y,8,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle="#f97316";ctx.beginPath();ctx.arc(pr.x-pr.vx*.015,pr.y-pr.vy*.015,5,0,Math.PI*2);ctx.fill();
+  for(const pr of [deathmatchState.projectile,deathmatchState.enemyProjectile]){
+    if(!pr) continue;
+    ctx.fillStyle="#111827";
+    ctx.beginPath();ctx.arc(pr.x,pr.y,8,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#f97316";
+    ctx.beginPath();ctx.arc(pr.x-pr.vx*.015,pr.y-pr.vy*.015,5,0,Math.PI*2);ctx.fill();
   }
   const ex=deathmatchState.explosion;
   if(ex){
@@ -718,6 +802,8 @@ function startMatch(opponentId){
     if(dashBtn) dashBtn.textContent="DASH";
     deathmatchState.active=false;
     deathmatchState.projectile=null;
+    deathmatchState.enemyProjectile=null;
+    deathmatchState.enemyBazookaUser=null;
     deathmatchState.explosion=null;
   }
   gamePhase="match";
@@ -2005,7 +2091,73 @@ function aiMoveOffBall(p,dt) {
   p.vx=lerp(p.vx,n.x*desired,clamp(dt*5,0,1));
   p.vy=lerp(p.vy,n.y*desired,clamp(dt*5,0,1));
 }
+
+function goalkeeperUnavailableAgainst(team){
+  const enemyTeam=team==="blue"?"red":"blue";
+  const gk=teamPlayers(enemyTeam).find(p=>p.role==="gk");
+  if(!gk) return true;
+  return gk.gkFall>0 || gk.stagger>0 || gk.x<COURT.x-20 || gk.x>COURT.x+COURT.w+20;
+}
+
+function cpuShotOpportunity(p){
+  if(!p || p.role==="gk" || ball.owner!==p) return false;
+
+  const attack=p.team==="blue"?1:-1;
+  const goalX=p.team==="blue"?COURT.x+COURT.w:COURT.x;
+  const goalDist=Math.abs(goalX-p.x);
+
+  const nearest=closestOpponent(p);
+  const open=nearest.d>95;
+  const gkOut=goalkeeperUnavailableAgainst(p.team);
+
+  // Strong chance if goalkeeper is down/away, otherwise good range + some space.
+  if(gkOut && goalDist<520) return true;
+  if(goalDist<330 && open) return true;
+  if(goalDist<230) return true;
+
+  return false;
+}
+
+function cpuShootNow(p){
+  if(!cpuShotOpportunity(p)) return false;
+
+  const targetX=p.team==="blue"?COURT.x+COURT.w+12:COURT.x-12;
+  let targetY=H/2;
+
+  const enemyTeam=p.team==="blue"?"red":"blue";
+  const gk=teamPlayers(enemyTeam).find(q=>q.role==="gk");
+  if(gk && gk.gkFall<=0 && gk.stagger<=0){
+    // Aim away from goalkeeper.
+    targetY=gk.y<H/2 ? H/2+GOAL_H*.28 : H/2-GOAL_H*.28;
+  }else{
+    // Keeper absent/down: pick a corner.
+    targetY=p.y<H/2 ? H/2+GOAL_H*.30 : H/2-GOAL_H*.30;
+  }
+
+  const n=norm(targetX-p.x,targetY-p.y);
+  ball.owner=null;
+  ball.passFrom=p;
+  ball.passTarget=null;
+  ball.lastTouch=p;
+  ball.vx=n.x*590;
+  ball.vy=n.y*590;
+  ball.vz=22;
+  ball.shot=true;
+  ball.power=590;
+  ball.touchGrace=.12;
+  ball.protectedTeam=p.team;
+  p.kickAnim=.20;
+  p.cooldown=.28;
+  return true;
+}
+
 function aiWithBall(p,dt) {
+  // v96: any AI field player may shoot when the chance is clearly good.
+  if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
+    const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
+    if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
+  }
+
   p.possessionTime+=dt;
   p.aiTimer-=dt;
 
@@ -2968,7 +3120,9 @@ function drawPlayer(p) {
   ctx.arc(headShift+4,-30,1.7,0,Math.PI*2);
   ctx.fill();
 
-  if(deathmatchState.active && p.controlled && p.role!=="gk"){
+  if(deathmatchState.active &&
+     p.role!=="gk" &&
+     (p.controlled || p===deathmatchState.enemyBazookaUser)){
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10,-8);ctx.lineTo(34,-12);ctx.stroke();
     ctx.strokeStyle="#111827";ctx.lineWidth=4;
@@ -4153,7 +4307,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v95";
+  if(v) v.textContent="v96";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v95";
+  if(b) b.textContent="v96";
 });
