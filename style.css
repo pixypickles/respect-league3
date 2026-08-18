@@ -556,3 +556,68 @@ body {
   #buttons .pass  { left: 50%; top: 18%; background: rgba(59,130,246,.72); }
   #buttons .trap  { left: 2%; top: 18%; background: rgba(34,197,94,.78); }
 }
+
+
+/* ===== v59 FORCE RIGHT BUTTON LAYOUT ===== */
+/* Left column: TRAP / DASH
+   Right column: PASS / SHOT
+   Use !important so older v54-v58 rules cannot override this. */
+
+#buttons {
+  right: max(6px, env(safe-area-inset-right)) !important;
+  top: 50% !important;
+  bottom: auto !important;
+  transform: translateY(-50%) !important;
+
+  width: min(22vw, 230px) !important;
+  height: min(52vh, 300px) !important;
+}
+
+#buttons .game-btn {
+  width: min(8.4vw, 88px) !important;
+  height: min(8.4vw, 88px) !important;
+  min-width: 58px !important;
+  min-height: 58px !important;
+}
+
+/* left column */
+#buttons .trap {
+  left: 0% !important;
+  right: auto !important;
+  top: 14% !important;
+  bottom: auto !important;
+}
+
+#buttons .dash {
+  left: 0% !important;
+  right: auto !important;
+  top: 56% !important;
+  bottom: auto !important;
+}
+
+/* right column */
+#buttons .pass {
+  left: 50% !important;
+  right: auto !important;
+  top: 14% !important;
+  bottom: auto !important;
+}
+
+#buttons .shoot {
+  left: 50% !important;
+  right: auto !important;
+  top: 56% !important;
+  bottom: auto !important;
+}
+
+@media (max-height: 520px) {
+  #buttons {
+    width: min(21vw, 210px) !important;
+    height: min(50vh, 275px) !important;
+  }
+
+  #buttons .game-btn {
+    width: min(7.8vw, 82px) !important;
+    height: min(7.8vw, 82px) !important;
+  }
+}
