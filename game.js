@@ -1,7 +1,8 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v89";
+const GAME_VERSION="v90";
 let foulPause=0;
 let pendingFreeKick=null;
+
 (() => {
 "use strict";
 
@@ -3935,7 +3936,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v89";
+  if(v) v.textContent="v90";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v89";
+  if(b) b.textContent="v90";
 });
