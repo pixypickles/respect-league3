@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v94";
+const GAME_VERSION="v95";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -534,11 +534,12 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
+  // v95: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
-    {x1:COURT.x+COURT.w*.25,y1:COURT.y+35,x2:COURT.x+COURT.w*.25,y2:COURT.y+COURT.h-35},
-    {x1:COURT.x+COURT.w*.50,y1:COURT.y+35,x2:COURT.x+COURT.w*.50,y2:COURT.y+COURT.h-35},
-    {x1:COURT.x+COURT.w*.75,y1:COURT.y+35,x2:COURT.x+COURT.w*.75,y2:COURT.y+COURT.h-35},
-    {x1:COURT.x+60,y1:COURT.y+COURT.h*.50,x2:COURT.x+COURT.w-60,y2:COURT.y+COURT.h*.50}
+    {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
+    {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
+    {x1:COURT.x+COURT.w*.60,y1:COURT.y+28,x2:COURT.x+COURT.w*.60,y2:COURT.y+COURT.h-28},
+    {x1:COURT.x+COURT.w*.80,y1:COURT.y+28,x2:COURT.x+COURT.w*.80,y2:COURT.y+COURT.h-28}
   ];
 }
 
@@ -571,15 +572,48 @@ function triggerDeathmatchShock(){
   }
 }
 
+
+function bazookaAimDirection(p){
+  // "Forward" follows the player's current horizontal facing.
+  // The bazooka is limited to the forward 180-degree hemisphere.
+  const forwardSign = p.dirX<0 ? -1 : 1;
+
+  // No stick input = straight ahead.
+  if(Math.hypot(input.sx,input.sy)<.18){
+    return {x:forwardSign,y:0,angle:0};
+  }
+
+  // Convert joystick direction to an angle relative to forward.
+  // Positive screen-Y means downward.
+  const relX=input.sx*forwardSign;
+  const relY=input.sy;
+  let deg=Math.atan2(relY,relX)*180/Math.PI;
+
+  // Clamp to the forward hemisphere.
+  deg=clamp(deg,-90,90);
+
+  // Quantize to 30-degree steps: exactly 7 possible angles.
+  deg=Math.round(deg/30)*30;
+  deg=clamp(deg,-90,90);
+
+  const rad=deg*Math.PI/180;
+  return {
+    x:Math.cos(rad)*forwardSign,
+    y:Math.sin(rad),
+    angle:deg
+  };
+}
+
 function fireBazooka(p){
   if(!deathmatchState.active || !p || p.role==="gk" || deathmatchState.projectile) return false;
-  let dx=input.sx,dy=input.sy;
-  if(Math.hypot(dx,dy)<.18){dx=p.dirX;dy=p.dirY;}
-  const n=norm(dx,dy);
+
+  const n=bazookaAimDirection(p);
+
   deathmatchState.projectile={
     x:p.x+n.x*26,y:p.y+n.y*26,
     vx:n.x*620,vy:n.y*620,
-    team:p.team,owner:p,life:1.7
+    team:p.team,owner:p,life:1.7,
+    aimAngle:n.angle
   };
   p.kickAnim=.12;
   showMessage("BAZOOKA!",.26);
@@ -656,8 +690,10 @@ function drawDeathmatchEffects(){
   ctx.save();
   ctx.lineCap="round";
   for(const line of deathmatchState.lines){
-    ctx.strokeStyle=deathmatchState.shockFlash>0 ? "rgba(147,197,253,.98)" : "rgba(96,165,250,.38)";
-    ctx.lineWidth=deathmatchState.shockFlash>0 ? 8 : 3;
+    ctx.strokeStyle=deathmatchState.shockFlash>0 ? "rgba(191,219,254,.99)" : "rgba(34,211,238,.62)";
+    ctx.lineWidth=deathmatchState.shockFlash>0 ? 9 : 5;
+    ctx.shadowColor=deathmatchState.shockFlash>0 ? "rgba(219,234,254,.95)" : "rgba(34,211,238,.28)";
+    ctx.shadowBlur=deathmatchState.shockFlash>0 ? 15 : 6;
     ctx.beginPath();ctx.moveTo(line.x1,line.y1);ctx.lineTo(line.x2,line.y2);ctx.stroke();
   }
   const pr=deathmatchState.projectile;
@@ -4117,7 +4153,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v94";
+  if(v) v.textContent="v95";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v94";
+  if(b) b.textContent="v95";
 });
