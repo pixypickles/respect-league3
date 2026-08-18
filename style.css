@@ -681,3 +681,62 @@ body {
   letter-spacing:.12em;
   opacity:.58;
 }
+
+
+/* ===== v68 操作方法 & 大会結果スクロール ===== */
+.controls-panel {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.controls-list {
+  text-align: left;
+  width: min(720px, 92%);
+  margin: 0 auto 18px;
+}
+
+.controls-list h2 {
+  margin: 14px 0 4px;
+  font-size: clamp(14px, 2vw, 19px);
+}
+
+.controls-list p {
+  margin: 0;
+  line-height: 1.55;
+  opacity: .92;
+  font-size: clamp(12px, 1.6vw, 15px);
+}
+
+/* Result screen must remain fully scrollable on short landscape phones. */
+#menuOverlay {
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y !important;
+}
+
+#resultScreen,
+#controlsScreen {
+  max-height: none !important;
+  overflow: visible !important;
+  margin-bottom: 36px !important;
+  touch-action: pan-y !important;
+}
+
+#resultScreen .mode-buttons,
+#resultScreen .menu-button,
+#controlsScreen .menu-button {
+  touch-action: manipulation !important;
+}
+
+@media (max-height: 520px) {
+  #resultScreen,
+  #controlsScreen {
+    padding-bottom: 48px !important;
+    margin-bottom: 48px !important;
+  }
+
+  .day-cup-info {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}

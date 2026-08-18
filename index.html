@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <meta name="theme-color" content="#111827" />
-  <title>Futsal Trap Game v67</title>
+  <title>Futsal Trap Game v68</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -15,7 +15,7 @@
     <canvas id="game" width="1280" height="720" aria-label="Futsal game"></canvas>
 
     <div id="hud">
-      <div id="score">BLUE 0 - 0 RED</div><div id="versionTag">v67</div>
+      <div id="score">BLUE 0 - 0 RED</div><div id="versionTag">v68</div>
       <div id="clock">03:00</div>
     </div>
 
@@ -55,6 +55,7 @@
           <button id="bracketBtn" class="menu-button">ワンデイ大会モード</button>
           <button id="freeMatchBtn" class="menu-button">フリーマッチ</button>
           <button id="practiceBtn" class="menu-button">練習モード</button>
+          <button id="controlsBtn" class="menu-button">操作方法</button>
           <button id="modeBackBtn" class="menu-button small">チーム選択へ戻る</button>
         </div>
       </section>
@@ -75,6 +76,38 @@
           <button id="partnerPracticeBtn" class="menu-button">味方1人と練習</button>
           <button id="practiceBackBtn" class="menu-button small">戻る</button>
         </div>
+      </section>
+
+
+      <section id="controlsScreen" class="menu-panel controls-panel hidden">
+        <div class="menu-kicker">HOW TO PLAY</div>
+        <h1>操作方法</h1>
+        <div class="controls-list">
+          <h2>移動</h2>
+          <p>左の方向スティックで移動。ボールをキープしていれば、そのまま足元についてきます。</p>
+
+          <h2>TRAP</h2>
+          <p>ボールを受けるタイミングで押すとトラップ。シュートでもタイミングが合えば止められます。守備では近距離のスティール。</p>
+
+          <h2>PASS</h2>
+          <p>味方へパス。方向入力がなければ近い味方へ。方向入力があれば、その方向に近い味方へ補正します。</p>
+
+          <h2>ワンツー</h2>
+          <p>パスを出したあと、もう一度PASSかDASHを押すとリターン要求。走っている方向の少し先へ返ってきます。</p>
+
+          <h2>SHOT</h2>
+          <p>ゴール方向へ強シュート。方向スティックの上下でコースを狙えます。素早く2回押すとさらに強いシュート。</p>
+
+          <h2>DASH</h2>
+          <p>短い加速。相手が近く正面にいる状態では股抜きになります。股抜きを防ぐには、抜かれる側が後ろ方向へDASH。</p>
+
+          <h2>守備</h2>
+          <p>PASSで足を出してボールをこぼれさせる。SHOTでショルダーチャージ。TRAPはさらに短い距離でスティール。</p>
+
+          <h2>GK</h2>
+          <p>基本はオート。正面のボールは止めます。強いシュートを弾いて倒れたあとは通常は触れませんが、ジャストTRAPだけ緊急パリー可能。</p>
+        </div>
+        <button id="controlsBackBtn" class="menu-button small">戻る</button>
       </section>
 
       <section id="resultScreen" class="menu-panel hidden">

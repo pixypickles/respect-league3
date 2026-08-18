@@ -1,4 +1,4 @@
-const GAME_VERSION="v67";
+const GAME_VERSION="v68";
 (() => {
 "use strict";
 
@@ -33,6 +33,9 @@ const tournamentBtnEl = document.getElementById("tournamentBtn");
 const bracketBtnEl = document.getElementById("bracketBtn");
 const freeMatchBtnEl = document.getElementById("freeMatchBtn");
 const practiceBtnEl = document.getElementById("practiceBtn");
+const controlsBtnEl = document.getElementById("controlsBtn");
+const controlsScreenEl = document.getElementById("controlsScreen");
+const controlsBackBtnEl = document.getElementById("controlsBackBtn");
 const practiceScreenEl = document.getElementById("practiceScreen");
 const soloPracticeBtnEl = document.getElementById("soloPracticeBtn");
 const partnerPracticeBtnEl = document.getElementById("partnerPracticeBtn");
@@ -186,7 +189,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  for(const el of [teamScreenEl,modeScreenEl,opponentScreenEl,practiceScreenEl,resultScreenEl]){
+  for(const el of [teamScreenEl,modeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,resultScreenEl]){
     el.classList.add("hidden");
   }
   which.classList.remove("hidden");
@@ -663,49 +666,50 @@ function advanceTutorialIfNeeded(){
 }
 
 function setupPracticePlayers(type){
-  // Keep blue side only; red field players are moved out of active play.
   const b=teams.blue, r=teams.red;
   const c=controlled();
+
+  // Put everyone out of active play first.
+  for(const p of [...b,...r]){
+    p.vx=p.vy=0;
+    p.x=-500;
+    p.y=-500;
+  }
 
   Object.assign(c,{x:430,y:360,vx:0,vy:0});
   c.dirX=1;c.dirY=0;
 
-  // one partner in partner mode; otherwise place teammates well away
-  if(type==="partner"){
-    practicePartner=b.find(p=>!p.controlled && p.role!=="gk");
-    Object.assign(practicePartner,{x:650,y:360,vx:0,vy:0});
-    for(const p of b){
-      if(p!==c && p!==practicePartner){
-        p.x=COURT.x+45;p.y=COURT.y+45;
-      }
-    }
-  } else {
-    practicePartner=b.find(p=>!p.controlled && p.role!=="gk");
-    Object.assign(practicePartner,{x:650,y:360,vx:0,vy:0});
-    for(const p of b){
-      if(p!==c && p!==practicePartner){
-        p.x=COURT.x+45;p.y=COURT.y+45;
-      }
-    }
-  }
+  practicePartner=null;
 
-  for(const p of r){
-    if(p.role==="gk"){
-      p.x=COURT.x+COURT.w-30;p.y=H/2;
-    }else{
-      p.x=COURT.x+COURT.w-55;
-      p.y=COURT.y+45;
+  if(type==="partner"){
+    // Player + one teammate only. No opponents.
+    practicePartner=b.find(p=>!p.controlled && p.role!=="gk");
+    if(practicePartner){
+      Object.assign(practicePartner,{x:650,y:360,vx:0,vy:0});
     }
-    p.vx=p.vy=0;
+  }else{
+    // Solo tutorial: player + one enemy only.
+    const enemy=r.find(p=>p.role!=="gk");
+    if(enemy){
+      Object.assign(enemy,{x:700,y:360,vx:0,vy:0});
+      enemy.dirX=-1; enemy.dirY=0;
+    }
   }
 
   ball.owner=c;
-  ball.x=c.x+22;
-  ball.y=c.y+18;
+  ball.x=c.x+18;
+  ball.y=c.y+20;
   ball.z=0;
   ball.vx=ball.vy=ball.vz=0;
   ball.passTarget=null;
   ball.shot=false;
+}
+
+
+function resetPracticeAfterGoal(){
+  setupPracticePlayers(practiceType);
+  goalPause=0;
+  messageTimer=0;
 }
 
 function startPractice(type){
@@ -1778,8 +1782,8 @@ function aiWithBall(p,dt) {
 
 function updateAI(p,dt) {
   if(gamePhase==="practice"){
-    if(p.team==="red") return;
     if(p.role==="gk") return;
+    if(p.x<-100 || p.y<-100) return;
     if(p.controlled){updateControlled(p,dt);return;}
 
     if(practiceType==="partner" && p===practicePartner){
@@ -1791,6 +1795,24 @@ function updateAI(p,dt) {
         }
       }else{
         aiMoveOffBall(p,dt);
+      }
+      return;
+    }
+
+    if(practiceType==="solo" && p.team==="red"){
+      // One practice defender only.
+      if(ball.owner===p){
+        p.aiTimer-=dt;
+        if(p.aiTimer<=0){
+          p.aiTimer=.8;
+          kickBall(p,-180,rand(-35,35),210,8,false,null);
+        }
+      }else{
+        const target=ball.owner || ball;
+        const n=norm(target.x-p.x,target.y-p.y);
+        p.dirX=n.x;p.dirY=n.y;
+        p.vx=lerp(p.vx,n.x*p.speed*.48,dt*3);
+        p.vy=lerp(p.vy,n.y*p.speed*.48,dt*3);
       }
     }
     return;
@@ -2964,6 +2986,8 @@ function bindMenuTap(el,fn){
 bindMenuTap(soloPracticeBtnEl,()=>startPractice("solo"));
 bindMenuTap(partnerPracticeBtnEl,()=>startPractice("partner"));
 bindMenuTap(practiceBackBtnEl,()=>setMenuScreen(modeScreenEl));
+bindMenuTap(controlsBtnEl,()=>setMenuScreen(controlsScreenEl));
+bindMenuTap(controlsBackBtnEl,()=>setMenuScreen(modeScreenEl));
 tutorialExitBtnEl.addEventListener("click",endPractice);
 
 bindMenuTap(bracketBtnEl,startDayCup);
