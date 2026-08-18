@@ -1,4 +1,4 @@
-const GAME_VERSION="v71";
+const GAME_VERSION="v73";
 (() => {
 "use strict";
 
@@ -2652,6 +2652,10 @@ function releaseStick(){
 
 stickZone.addEventListener("pointerdown",e=>{
   e.preventDefault();
+
+  // Ignore a second finger trying to steal the movement pointer.
+  if(stickPointer!==null && stickPointer!==e.pointerId) return;
+
   stickPointer=e.pointerId;
   input.stickActive=true;
   try{stickZone.setPointerCapture(e.pointerId);}catch(_){}
@@ -2668,7 +2672,9 @@ stickZone.addEventListener("pointermove",e=>{
 stickZone.addEventListener("pointerup",e=>{
   if(e.pointerId===stickPointer) releaseStick();
 });
-stickZone.addEventListener("pointercancel",releaseStick);
+stickZone.addEventListener("pointercancel",e=>{
+  if(stickPointer===null || e.pointerId===stickPointer) releaseStick();
+});
 
 
 
@@ -2988,8 +2994,18 @@ setInterval(()=>{
   if(keys.has("ArrowRight"))x++;
   if(keys.has("ArrowUp"))y--;
   if(keys.has("ArrowDown"))y++;
-  const n=norm(x,y);
-  input.sx=x||y?n.x:0;input.sy=x||y?n.y:0;
+
+  // v73: keyboard testing must never overwrite an active mobile stick.
+  // Only take control while at least one arrow key is actually held.
+  if(x!==0 || y!==0){
+    const n=norm(x,y);
+    input.sx=n.x;
+    input.sy=n.y;
+  } else if(!input.stickActive){
+    // No keyboard input and no touch stick: neutral.
+    input.sx=0;
+    input.sy=0;
+  }
 },16);
 
 
