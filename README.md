@@ -423,3 +423,8 @@ GitHub Pagesへそのまま配置して遊べます。
 - 古い `manualTrapCutProtectedBall()` 呼び出しも削除
 - TRAP / PASS / SHOT / DASH をコンパクトな菱形寄り配置へ変更
 - ボタン同士は近いまま、重なりをかなり減らした
+
+## v55 ボタン配置
+- PASSとTRAPの位置を入れ替え
+- PASSを以前より少し右寄りへ配置
+- SHOT / DASH はv54の位置を維持

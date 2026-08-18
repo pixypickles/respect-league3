@@ -594,3 +594,30 @@ body {
   #buttons .shoot { top: 35%; }
   #buttons .dash { bottom: 1%; }
 }
+
+
+/* ===== v55 right controls =====
+   PASS and TRAP positions swapped.
+   PASS is nudged farther right. */
+#buttons .pass {
+  width: min(9.5vw, 104px);
+  height: min(9.5vw, 104px);
+  right: 2%;
+  top: 0%;
+  left: auto;
+  bottom: auto;
+}
+
+#buttons .trap {
+  width: min(9.2vw, 100px);
+  height: min(9.2vw, 100px);
+  left: 0%;
+  top: 34%;
+  right: auto;
+  bottom: auto;
+}
+
+@media (max-height: 520px) {
+  #buttons .pass { top: 1%; right: 2%; }
+  #buttons .trap { top: 35%; left: 0%; }
+}
