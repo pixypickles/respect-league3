@@ -844,8 +844,8 @@ function attemptTrap(p, dt) {
   // v53: TRAP cannot stop a nutmeg ball.
   if(nutmegProtectedAgainst(p)) return false;
   // Protected chipped dash ball: only a perfectly close manual TRAP can cut it.
-  if(dashBallProtectedAgainst(p)){
-    if(manualTrapCutProtectedBall(p)) return true;
+  if(nutmegProtectedAgainst(p)){
+    if(false) return true;
     return false;
   }
 
@@ -957,8 +957,8 @@ function shortTrapSteal(actor) {
   if(nutmegProtectedAgainst(actor)) return false;
   if(!actor || actor.role==="gk" || actor.cooldown>0 || actor.stagger>0) return false;
 
-  if(dashBallProtectedAgainst(actor)){
-    return manualTrapCutProtectedBall(actor);
+  if(nutmegProtectedAgainst(actor)){
+    return false;
   }
 
   const enemyOwner = ball.owner && ball.owner.team!==actor.team ? ball.owner : null;
@@ -1001,7 +1001,7 @@ function shortTrapSteal(actor) {
 
 function defensivePoke(actor) {
   if(nutmegProtectedAgainst(actor)) return false;
-  if(dashBallProtectedAgainst(actor)) return false;
+  if(nutmegProtectedAgainst(actor)) return false;
 
   if(ball.owner && ball.owner.team!==actor.team && dist(actor,ball.owner)<58) {
     const e=ball.owner;
@@ -2229,7 +2229,7 @@ shootBtn.addEventListener("pointerdown",e=>{
 });
 
 function canPlayerShootNow(c){
-  if(dashBallProtectedAgainst(c)) return false;
+  if(nutmegProtectedAgainst(c)) return false;
   return ball.owner===c ||
          nearbyLooseBallFor(c,116) ||
          (input.shootBallLock && !ball.owner && dist(c,ball)<132 && ball.z<42);

@@ -416,3 +416,10 @@ GitHub Pagesへそのまま配置して遊べます。
 - 股抜き中はTRAP・PASSの足出しなどでは止められない
 - 防ぐ方法は、抜かれる側が後ろ方向へDASHしていることのみ
 - パス後DASHでリターン要求する操作は維持
+
+## v54 エラー修正・右ボタン配置
+- `dashBallProtectedAgainst is not defined` の残骸参照を全削除
+- 股抜き中の保護判定を `nutmegProtectedAgainst()` に統一
+- 古い `manualTrapCutProtectedBall()` 呼び出しも削除
+- TRAP / PASS / SHOT / DASH をコンパクトな菱形寄り配置へ変更
+- ボタン同士は近いまま、重なりをかなり減らした

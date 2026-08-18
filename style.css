@@ -527,3 +527,70 @@ body {
     max-height: calc(100% - 8px);
   }
 }
+
+
+/* ===== v54 right controls: compact but separated ===== */
+#buttons {
+  right: max(8px, env(safe-area-inset-right));
+  top: 50%;
+  transform: translateY(-50%);
+  width: min(24vw, 250px);
+  height: min(58vh, 360px);
+}
+
+/* TRAP on top, PASS/SHOT side-by-side, DASH below */
+#buttons .trap {
+  width: min(9.5vw, 104px);
+  height: min(9.5vw, 104px);
+  right: 10%;
+  top: 0%;
+  left: auto;
+  bottom: auto;
+}
+
+#buttons .pass {
+  width: min(9.2vw, 100px);
+  height: min(9.2vw, 100px);
+  left: 0%;
+  top: 34%;
+  right: auto;
+  bottom: auto;
+}
+
+#buttons .shoot {
+  width: min(9.2vw, 100px);
+  height: min(9.2vw, 100px);
+  right: 0%;
+  top: 34%;
+  left: auto;
+  bottom: auto;
+}
+
+#buttons .dash {
+  width: min(9.4vw, 102px);
+  height: min(9.4vw, 102px);
+  right: 10%;
+  bottom: 0%;
+  left: auto;
+  top: auto;
+}
+
+@media (max-height: 520px) {
+  #buttons {
+    width: min(23vw, 230px);
+    height: min(56vh, 320px);
+  }
+
+  #buttons .trap,
+  #buttons .pass,
+  #buttons .shoot,
+  #buttons .dash {
+    width: min(8.7vw, 92px);
+    height: min(8.7vw, 92px);
+  }
+
+  #buttons .trap { top: 1%; }
+  #buttons .pass { top: 35%; }
+  #buttons .shoot { top: 35%; }
+  #buttons .dash { bottom: 1%; }
+}
