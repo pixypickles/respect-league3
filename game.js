@@ -419,6 +419,7 @@ function makePlayer(team, x,y, role="field", controlled=false) {
     afterPassY:y,
     shoulder:0,
     stagger:0,
+    backDashGuard:0,
     scanTimer:0,
     headLook:0
   };
@@ -476,7 +477,10 @@ const ball = {
   dashProtectTimer:0,
   dashProtectTeam:null,
   stealSecureTimer:0,
-  stealSecurePlayer:null
+  stealSecurePlayer:null,
+  nutmegTimer:0,
+  nutmegTeam:null,
+  nutmegTarget:null
 };
 
 function resetKickoff(team="blue") {
@@ -503,6 +507,7 @@ function resetKickoff(team="blue") {
   ball.z=0; ball.vx=ball.vy=ball.vz=0; ball.shot=false; ball.passTarget=null;
   ball.touchGrace=.18; ball.protectedTeam=starter.team;
   ball.dashProtectTimer=0; ball.dashProtectTeam=null;
+  ball.nutmegTimer=0; ball.nutmegTeam=null; ball.nutmegTarget=null;
   starter.possessionTime=0;
 }
 
@@ -836,6 +841,8 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
+  // v53: TRAP cannot stop a nutmeg ball.
+  if(nutmegProtectedAgainst(p)) return false;
   // Protected chipped dash ball: only a perfectly close manual TRAP can cut it.
   if(dashBallProtectedAgainst(p)){
     if(manualTrapCutProtectedBall(p)) return true;
@@ -947,6 +954,7 @@ function beginStealSecure(p,vx=0,vy=0){
 }
 
 function shortTrapSteal(actor) {
+  if(nutmegProtectedAgainst(actor)) return false;
   if(!actor || actor.role==="gk" || actor.cooldown>0 || actor.stagger>0) return false;
 
   if(dashBallProtectedAgainst(actor)){
@@ -992,6 +1000,7 @@ function shortTrapSteal(actor) {
 }
 
 function defensivePoke(actor) {
+  if(nutmegProtectedAgainst(actor)) return false;
   if(dashBallProtectedAgainst(actor)) return false;
 
   if(ball.owner && ball.owner.team!==actor.team && dist(actor,ball.owner)<58) {
@@ -1383,7 +1392,7 @@ function updateAI(p,dt) {
   if(p.controlled){updateControlled(p,dt);return;}
   if(p.slide>0)return;
 
-  if(!ball.owner && nearbyLooseBallFor(p,74) && !dashBallProtectedAgainst(p)) {
+  if(!ball.owner && nearbyLooseBallFor(p,74) && !nutmegProtectedAgainst(p)) {
     const squad=teamPlayers(p.team).filter(q=>q.role!=="gk" && !q.controlled);
     const nearest=squad.slice().sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
     if(nearest===p && ball.touchGrace<=0) {
@@ -1507,6 +1516,11 @@ function updatePhysics(dt) {
   input.actionPriorityTimer=Math.max(0,input.actionPriorityTimer-dt);
   input.postKickNoAutoTrap=Math.max(0,input.postKickNoAutoTrap-dt);
   ball.touchGrace=Math.max(0,ball.touchGrace-dt);
+  ball.nutmegTimer=Math.max(0,ball.nutmegTimer-dt);
+  if(ball.nutmegTimer<=0){
+    ball.nutmegTeam=null;
+    ball.nutmegTarget=null;
+  }
   ball.stealSecureTimer=Math.max(0,ball.stealSecureTimer-dt);
   if(ball.stealSecurePlayer && ball.stealSecureTimer<=0 && !ball.owner){
     const sp=ball.stealSecurePlayer;
@@ -1531,6 +1545,7 @@ function updatePhysics(dt) {
     p.afterPassRunTimer=Math.max(0,p.afterPassRunTimer-dt);
     p.shoulder=Math.max(0,p.shoulder-dt);
     p.stagger=Math.max(0,p.stagger-dt);
+    p.backDashGuard=Math.max(0,p.backDashGuard-dt);
     p.kickAnim=Math.max(0,p.kickAnim-dt);
     p.slide=Math.max(0,p.slide-dt);
 
@@ -1990,83 +2005,96 @@ stickZone.addEventListener("pointerup",e=>{
 stickZone.addEventListener("pointercancel",releaseStick);
 
 
-function dashBallProtectedAgainst(p){
-  return ball.dashProtectTimer>0 &&
-         ball.dashProtectTeam &&
-         p.team!==ball.dashProtectTeam;
-}
 
-function manualTrapCutProtectedBall(p){
-  if(!p || !p.controlled) return false;
-  if(!input.trap) return false;
-  if(!dashBallProtectedAgainst(p)) return false;
 
-  const overlap=dist(p,ball)<30 && ball.z<34;
-  if(!overlap) return false;
 
-  ball.dashProtectTimer=0;
-  ball.dashProtectTeam=null;
-  const n=norm(p.dirX,p.dirY);
-  beginStealSecure(p,n.x*45,n.y*45);
-  ball.lastTouch=p;
-  p.kickAnim=.14;
-  showMessage("TRAP CUT!",.34);
-  return true;
-}
 
-function dashTouchSkill(p){
-  const owned=ball.owner===p;
-  const loose=!ball.owner && ball.z<32 && dist(p,ball)<82;
-  if(!owned && !loose) return false;
 
-  const mag=Math.hypot(input.sx,input.sy);
-  let dx=mag>.15?input.sx:p.dirX;
-  let dy=mag>.15?input.sy:p.dirY;
-  if(Math.hypot(dx,dy)<.1){
-    dx=p.team==="blue"?1:-1;
-    dy=0;
-  }
-  const n=norm(dx,dy);
-
-  ball.owner=null;
-  ball.passTarget=null;
-  ball.lastTouch=p;
-  ball.passFrom=p;
-  ball.x=owned?p.x+n.x*24:ball.x;
-  ball.y=owned?p.y+16+n.y*10:ball.y;
-  ball.z=5;
-
-  // v35 adjustment: a little farther forward.
-  // v51: push slightly farther into space so the player can burst past a defender.
-  ball.vx=n.x*395;
-  ball.vy=n.y*395;
-  ball.vz=84;
-  ball.shot=false;
-  ball.power=365;
-  ball.touchGrace=.10;
-  ball.protectedTeam=p.team;
-  ball.dashProtectTimer=.82;
-  ball.dashProtectTeam=p.team;
-
-  // Stronger chase burst: easier to get beyond the defender and catch the ball.
-  input.dashTimer=.40;
-  input.dashCooldown=.48;
-  input.postKickNoAutoTrap=.24;
-
-  p.dirX=n.x;
-  p.dirY=n.y;
-  p.vx=n.x*260;
-  p.vy=n.y*260;
-  p.kickAnim=.15;
-  p.cooldown=.10;
-
-  if(gamePhase==="practice") tutorialFlags.dashSkillUsed=true;
-  showMessage("PUSH & DASH",.34);
-  return true;
-}
 
 // ---------- Sound disabled ----------
 function sfx(name){ return; }
+
+
+function defenderBackDashGuarding(defender, attacker){
+  if(!defender || defender.backDashGuard<=0) return false;
+
+  // "Backwards" means DASH while moving away from the attacker.
+  const away=norm(defender.x-attacker.x,defender.y-attacker.y);
+  const move=norm(defender.dirX,defender.dirY);
+  return (away.x*move.x + away.y*move.y) > .45;
+}
+
+function tryNutmeg(attacker){
+  if(!attacker || attacker.role==="gk" || attacker.cooldown>0) return false;
+
+  const hasBall=ball.owner===attacker;
+  if(!hasBall) return false;
+
+  const enemies=opponents(attacker.team)
+    .filter(e=>e.role!=="gk" && e.stagger<=0)
+    .map(e=>({p:e,d:dist(attacker,e)}))
+    .sort((a,b)=>a.d-b.d);
+
+  const hit=enemies[0];
+  if(!hit || hit.d>82) return false;
+  const defender=hit.p;
+
+  const face=norm(attacker.dirX,attacker.dirY);
+  const to=norm(defender.x-attacker.x,defender.y-attacker.y);
+  const align=face.x*to.x+face.y*to.y;
+
+  // Defender must be roughly in front.
+  if(align<.25) return false;
+
+  // Only defense: defender is actively back-dashing away from attacker.
+  if(defenderBackDashGuarding(defender,attacker)){
+    ball.owner=attacker;
+    ball.vx=ball.vy=0;
+    ball.vz=0;
+    attacker.cooldown=.12;
+    showMessage("BLOCKED!",.28);
+    return true;
+  }
+
+  // Nutmeg: send ball through the defender and burst after it.
+  ball.owner=null;
+  ball.passTarget=null;
+  ball.lastTouch=attacker;
+  ball.passFrom=attacker;
+  ball.nutmegTimer=.34;
+  ball.nutmegTeam=attacker.team;
+  ball.nutmegTarget=defender;
+
+  // Place ball just in front of attacker, then send it beyond defender.
+  ball.x=attacker.x+face.x*24;
+  ball.y=attacker.y+16+face.y*8;
+  ball.z=2;
+  ball.vx=face.x*500;
+  ball.vy=face.y*500;
+  ball.vz=8;
+  ball.shot=false;
+  ball.power=500;
+  ball.touchGrace=.16;
+  ball.protectedTeam=attacker.team;
+
+  // Attacker follows with a fast burst.
+  input.dashTimer=.34;
+  input.dashCooldown=.48;
+  attacker.vx=face.x*330;
+  attacker.vy=face.y*330;
+  attacker.dirX=face.x;
+  attacker.dirY=face.y;
+  attacker.cooldown=.12;
+
+  showMessage("NUTMEG!",.34);
+  return true;
+}
+
+function nutmegProtectedAgainst(p){
+  return ball.nutmegTimer>0 &&
+         ball.nutmegTeam &&
+         p.team!==ball.nutmegTeam;
+}
 
 // ---------- Buttons ----------
 const passBtn=document.getElementById("passBtn");
@@ -2113,7 +2141,7 @@ dashBtn.addEventListener("pointerdown",e=>{
   e.preventDefault();
   const c=controlled();
 
-  // After the player's pass, DASH doubles as a one-two return request.
+  // Keep one-two return request behavior after a pass.
   if(!ball.owner && ball.passFrom===c && ball.passTarget && ball.passTarget.team==="blue"){
     ball.returnRequested=true;
     showMessage("RETURN REQUEST",.35);
@@ -2129,9 +2157,21 @@ dashBtn.addEventListener("pointerdown",e=>{
   }
 
   if(input.dashCooldown<=0){
-    if(!dashTouchSkill(c)){
+    if(!tryNutmeg(c)){
       input.dashTimer=.19;
       input.dashCooldown=.34;
+
+      // Defensive back-dash guard window.
+      const nearOpp=opponents(c.team)
+        .filter(e=>e.role!=="gk")
+        .sort((a,b)=>dist(c,a)-dist(c,b))[0];
+      if(nearOpp && dist(c,nearOpp)<100){
+        const away=norm(c.x-nearOpp.x,c.y-nearOpp.y);
+        const move=norm(input.sx,input.sy);
+        if((away.x*move.x+away.y*move.y)>.45){
+          c.backDashGuard=.28;
+        }
+      }
     }
 
     dashBtn.classList.add("active");
@@ -2151,7 +2191,7 @@ passBtn.addEventListener("pointerdown",e=>{
   }
 
   // Directly kick a nearby loose ball without needing TRAP first.
-  if(nearbyLooseBallFor(c,82) && !dashBallProtectedAgainst(c)) {
+  if(nearbyLooseBallFor(c,82) && !nutmegProtectedAgainst(c)) {
     if(kickNearbyLooseBall(c,"pass")) {
       if(gamePhase==="practice") tutorialFlags.directUsed=true;
       showMessage("DIRECT PASS",.28);
