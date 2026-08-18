@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v98";
+const GAME_VERSION="v99";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -39,6 +39,8 @@ const bracketBtnEl = document.getElementById("bracketBtn");
 const freeMatchBtnEl = document.getElementById("freeMatchBtn");
 const practiceBtnEl = document.getElementById("practiceBtn");
 const deathmatchBtnEl = document.getElementById("deathmatchBtn");
+const explosiveDeathmatchBtnEl = document.getElementById("explosiveDeathmatchBtn");
+const dragonDeathmatchBtnEl = document.getElementById("dragonDeathmatchBtn");
 const controlsBtnEl = document.getElementById("controlsBtn");
 const controlsScreenEl = document.getElementById("controlsScreen");
 const controlsBackBtnEl = document.getElementById("controlsBackBtn");
@@ -97,6 +99,11 @@ let deathmatchState={
   enemyBazookaUser:null,
   enemyFireTimer:1.8,
   explosion:null,
+  explosiveImpactCooldown:0,
+  dragonFireTimer:2.1,
+  dragonIceTimer:3.0,
+  dragonFireball:null,
+  dragonBreath:null,
   lines:[]
 };
 let matchFinished=false;
@@ -537,7 +544,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v98: vertical hazard lines only, evenly spaced.
+  // v99: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -568,6 +575,237 @@ function startDeathmatch(){
     teams.red.find(p=>p.role!=="gk") || null;
 }
 
+
+function startExplosiveDeathmatch(){
+  gameMode="deathmatch-explosive";
+  deathmatchState.active=true;
+  deathmatchState.projectile=null;
+  deathmatchState.enemyProjectile=null;
+  deathmatchState.enemyBazookaUser=null;
+  deathmatchState.explosion=null;
+  deathmatchState.explosiveImpactCooldown=0;
+  deathmatchState.lines=[];
+  if(dashBtn) dashBtn.textContent="DASH";
+
+  const pool=TEAM_DEFS.filter(t=>t.id!==selectedTeamId);
+  const opp=pool[Math.floor(Math.random()*pool.length)]?.id || "takezo";
+  startMatch(opp);
+}
+
+function startDragonDeathmatch(){
+  gameMode="deathmatch-dragon";
+  deathmatchState.active=true;
+  deathmatchState.projectile=null;
+  deathmatchState.enemyProjectile=null;
+  deathmatchState.enemyBazookaUser=null;
+  deathmatchState.explosion=null;
+  deathmatchState.lines=[];
+  deathmatchState.dragonFireTimer=rand(1.8,3.2);
+  deathmatchState.dragonIceTimer=rand(2.6,4.3);
+  deathmatchState.dragonFireball=null;
+  deathmatchState.dragonBreath=null;
+  if(dashBtn) dashBtn.textContent="DASH";
+
+  const pool=TEAM_DEFS.filter(t=>t.id!==selectedTeamId);
+  const opp=pool[Math.floor(Math.random()*pool.length)]?.id || "takezo";
+  startMatch(opp);
+}
+
+function blastPlayersAt(x,y,radius=105,power=560,stun=.55){
+  deathmatchState.explosion={x,y,t:.34};
+  for(const p of [...teams.blue,...teams.red]){
+    const d=Math.hypot(p.x-x,p.y-y);
+    if(d>radius) continue;
+    const n=norm(p.x-x,p.y-y);
+    const f=Math.max(.15,1-d/radius);
+    p.vx+=n.x*(power*f+180);
+    p.vy+=n.y*(power*f+180);
+    p.stagger=Math.max(p.stagger,stun+.5*f);
+    if(p.role==="gk") p.gkFall=Math.max(p.gkFall,.75+.55*f);
+  }
+}
+
+function explodeDangerBall(reason="impact"){
+  if(gameMode!=="deathmatch-explosive") return;
+  if(deathmatchState.explosiveImpactCooldown>0) return;
+  deathmatchState.explosiveImpactCooldown=.16;
+  blastPlayersAt(ball.x,ball.y-ball.z,105,610,.58);
+}
+
+function updateExplosiveBall(dt){
+  if(gameMode!=="deathmatch-explosive") return;
+  deathmatchState.explosiveImpactCooldown=Math.max(0,deathmatchState.explosiveImpactCooldown-dt);
+
+  // Player contact triggers an explosion when the loose ball is moving.
+  if(!ball.owner && Math.hypot(ball.vx,ball.vy)>95 && deathmatchState.explosiveImpactCooldown<=0){
+    for(const p of [...teams.blue,...teams.red]){
+      if(Math.hypot(p.x-ball.x,p.y-ball.y)<24){
+        explodeDangerBall("player");
+        break;
+      }
+    }
+  }
+
+  // Court-wall contact triggers an explosion.
+  const nearWall=
+    ball.x<=COURT.x+BALL_R+2 || ball.x>=COURT.x+COURT.w-BALL_R-2 ||
+    ball.y<=COURT.y+BALL_R+2 || ball.y>=COURT.y+COURT.h-BALL_R-2;
+  if(nearWall && Math.hypot(ball.vx,ball.vy)>120){
+    explodeDangerBall("wall");
+  }
+
+  if(deathmatchState.explosion){
+    deathmatchState.explosion.t-=dt;
+    if(deathmatchState.explosion.t<=0) deathmatchState.explosion=null;
+  }
+}
+
+function spawnDragonFireball(){
+  const side=Math.random()<.5 ? "top" : "bottom";
+  const y=side==="top" ? COURT.y-34 : COURT.y+COURT.h+34;
+  const target=[...teams.blue,...teams.red][Math.floor(Math.random()*(teams.blue.length+teams.red.length))];
+  const tx=target?.x ?? COURT.x+COURT.w*.5;
+  const ty=target?.y ?? COURT.y+COURT.h*.5;
+  const x=COURT.x+COURT.w+42;
+  const n=norm(tx-x,ty-y);
+  deathmatchState.dragonFireball={x,y,vx:n.x*430,vy:n.y*430,life:2.4};
+}
+
+function spawnDragonBreath(){
+  const targetY=rand(COURT.y+65,COURT.y+COURT.h-65);
+  deathmatchState.dragonBreath={y:targetY,t:.75};
+}
+
+function updateDragonDeathmatch(dt){
+  if(gameMode!=="deathmatch-dragon") return;
+
+  deathmatchState.dragonFireTimer-=dt;
+  deathmatchState.dragonIceTimer-=dt;
+
+  if(deathmatchState.dragonFireTimer<=0){
+    spawnDragonFireball();
+    deathmatchState.dragonFireTimer=rand(2.2,4.2);
+  }
+  if(deathmatchState.dragonIceTimer<=0){
+    spawnDragonBreath();
+    deathmatchState.dragonIceTimer=rand(3.2,5.2);
+  }
+
+  const fb=deathmatchState.dragonFireball;
+  if(fb){
+    fb.life-=dt;
+    fb.x+=fb.vx*dt; fb.y+=fb.vy*dt;
+    let hit=false;
+    for(const p of [...teams.blue,...teams.red]){
+      if(Math.hypot(p.x-fb.x,p.y-fb.y)<25){hit=true;break;}
+    }
+    if(hit || fb.life<=0 || fb.x<COURT.x-20 || fb.x>COURT.x+COURT.w+20 ||
+       fb.y<COURT.y-20 || fb.y>COURT.y+COURT.h+20){
+      blastPlayersAt(fb.x,fb.y,100,650,.7);
+      deathmatchState.dragonFireball=null;
+    }
+  }
+
+  const br=deathmatchState.dragonBreath;
+  if(br){
+    br.t-=dt;
+    if(br.t>.20){
+      for(const p of [...teams.blue,...teams.red]){
+        if(Math.abs(p.y-br.y)<38){
+          p.stagger=Math.max(p.stagger,1.45);
+          p.vx*=.25; p.vy*=.25;
+        }
+      }
+    }
+    if(br.t<=0) deathmatchState.dragonBreath=null;
+  }
+
+  if(deathmatchState.explosion){
+    deathmatchState.explosion.t-=dt;
+    if(deathmatchState.explosion.t<=0) deathmatchState.explosion=null;
+  }
+}
+
+
+function drawGenericExplosion(){
+  const ex=deathmatchState.explosion;
+  if(!ex) return;
+  const progress=1-ex.t/.34;
+  const r=28+progress*72;
+  ctx.save();
+  ctx.fillStyle=`rgba(249,115,22,${.62*(1-progress)})`;
+  ctx.beginPath();ctx.arc(ex.x,ex.y,r,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle=`rgba(255,255,255,${.8*(1-progress)})`;
+  ctx.lineWidth=5;
+  ctx.beginPath();ctx.arc(ex.x,ex.y,r*.72,0,Math.PI*2);ctx.stroke();
+  ctx.restore();
+}
+
+function drawExplosiveBall(){
+  const shadowScale=clamp(1-ball.z/220,.35,1);
+  ctx.save();
+  ctx.globalAlpha=.24; ctx.fillStyle="#000";
+  ctx.beginPath();ctx.ellipse(ball.x,ball.y+7,BALL_R*1.2*shadowScale,BALL_R*.55*shadowScale,0,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+
+  ctx.save();ctx.translate(ball.x,ball.y-ball.z);
+  ctx.fillStyle="#dc2626";
+  ctx.beginPath();ctx.arc(0,0,BALL_R,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle="#7f1d1d";ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle="#fee2e2";
+  ctx.beginPath();ctx.arc(-3,-3,3,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+}
+
+function drawDragonEffects(){
+  if(gameMode!=="deathmatch-dragon") return;
+  ctx.save();
+
+  // Red dragon outside the right/top side.
+  ctx.fillStyle="#b91c1c";
+  ctx.beginPath();
+  ctx.moveTo(COURT.x+COURT.w+18,COURT.y+42);
+  ctx.lineTo(COURT.x+COURT.w+58,COURT.y+24);
+  ctx.lineTo(COURT.x+COURT.w+48,COURT.y+62);
+  ctx.closePath();ctx.fill();
+  ctx.fillStyle="#fca5a5";
+  ctx.beginPath();ctx.arc(COURT.x+COURT.w+43,COURT.y+40,7,0,Math.PI*2);ctx.fill();
+
+  // Blue dragon outside the left/bottom side.
+  ctx.fillStyle="#1d4ed8";
+  ctx.beginPath();
+  ctx.moveTo(COURT.x-18,COURT.y+COURT.h-42);
+  ctx.lineTo(COURT.x-58,COURT.y+COURT.h-24);
+  ctx.lineTo(COURT.x-48,COURT.y+COURT.h-62);
+  ctx.closePath();ctx.fill();
+  ctx.fillStyle="#bfdbfe";
+  ctx.beginPath();ctx.arc(COURT.x-43,COURT.y+COURT.h-40,7,0,Math.PI*2);ctx.fill();
+
+  const fb=deathmatchState.dragonFireball;
+  if(fb){
+    ctx.fillStyle="#fb923c";
+    ctx.beginPath();ctx.arc(fb.x,fb.y,11,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle="#fef3c7";ctx.lineWidth=4;
+    ctx.beginPath();ctx.arc(fb.x,fb.y,7,0,Math.PI*2);ctx.stroke();
+  }
+
+  const br=deathmatchState.dragonBreath;
+  if(br){
+    const alpha=clamp(br.t/.75,.15,.85);
+    ctx.fillStyle=`rgba(147,197,253,${alpha*.45})`;
+    ctx.fillRect(COURT.x,br.y-38,COURT.w,76);
+    ctx.strokeStyle=`rgba(219,234,254,${alpha})`;
+    ctx.lineWidth=5;
+    for(let x=COURT.x+20;x<COURT.x+COURT.w;x+=54){
+      ctx.beginPath();
+      ctx.moveTo(x,br.y-25);
+      ctx.lineTo(x+22,br.y+25);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
 function lineDistanceToPlayer(line,p){
   return pointSegmentDistance(p.x,p.y,line.x1,line.y1,line.x2,line.y2);
 }
@@ -584,7 +822,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v98: forward is always the attacking direction, never toward own goal.
+  // v99: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -798,7 +1036,7 @@ function drawDeathmatchEffects(){
 }
 function startMatch(opponentId){
   opponentTeamId=opponentId;
-  if(gameMode!=="deathmatch"){
+  if(!String(gameMode).startsWith("deathmatch")){
     if(dashBtn) dashBtn.textContent="DASH";
     deathmatchState.active=false;
     deathmatchState.projectile=null;
@@ -827,6 +1065,10 @@ function returnToMainMenu(){
   dayCup=null;
   deathmatchState.active=false;
   deathmatchState.projectile=null;
+  deathmatchState.enemyProjectile=null;
+  deathmatchState.enemyBazookaUser=null;
+  deathmatchState.dragonFireball=null;
+  deathmatchState.dragonBreath=null;
   deathmatchState.explosion=null;
   if(dashBtn) dashBtn.textContent="DASH";
   renderTeamSelection();
@@ -845,6 +1087,8 @@ function finishMatch(){
     gameMode==="tournament" ? `TOURNAMENT ${tournamentRound+1}/4` :
     gameMode==="daycup" ? (dayCup && dayCup.stage==="final" ? "ONE DAY CUP FINAL" : "ONE DAY CUP") :
     gameMode==="deathmatch" ? "DEATHMATCH" :
+    gameMode==="deathmatch-explosive" ? "EXPLOSIVE BALL" :
+    gameMode==="deathmatch-dragon" ? "DRAGON DEATHMATCH" :
     "FREE MATCH";
   tournamentProgressEl.textContent="";
   dayCupInfoEl.textContent="";
@@ -1485,6 +1729,7 @@ function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
 
   p.kickAnim=.22;
   p.cooldown=.18;
+  if(gameMode==="deathmatch-explosive") explodeDangerBall(shot?"shot":"kick");
   if(!shot) sfx("pass");
 }
 
@@ -1594,7 +1839,7 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
-  // v98: TRAP must not vacuum a loose ball from a distance.
+  // v99: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -2156,7 +2401,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v98: any AI field player may shoot when the chance is clearly good.
+  // v99: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -2543,7 +2788,7 @@ function updateGK(p,dt) {
 }
 
 function updatePhysics(dt) {
-  // v98: in DEATHMATCH a loose ball must physically reach the feet.
+  // v99: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -2779,7 +3024,9 @@ function update(dt) {
   for(const p of teams.blue) p.role==="gk"?updateGK(p,dt):updateAI(p,dt);
   for(const p of teams.red) p.role==="gk"?updateGK(p,dt):updateAI(p,dt);
 
-  if(deathmatchState.active) updateDeathmatch(dt);
+  if(gameMode==="deathmatch") updateDeathmatch(dt);
+  if(gameMode==="deathmatch-explosive") updateExplosiveBall(dt);
+  if(gameMode==="deathmatch-dragon") updateDragonDeathmatch(dt);
   updatePhysics(dt);
 }
 
@@ -3131,7 +3378,7 @@ function drawPlayer(p) {
   if(deathmatchState.active &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v98: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v99: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -3167,12 +3414,15 @@ function drawBall() {
 function draw() {
   ctx.clearRect(0,0,W,H);
   drawCourt();
-  if(deathmatchState.active) drawDeathmatchEffects();
+  if(gameMode==="deathmatch") drawDeathmatchEffects();
+  if(gameMode==="deathmatch-dragon") drawDragonEffects();
+  if(gameMode==="deathmatch-explosive") drawGenericExplosion();
 
   // sort by y for a tiny bit of depth
   const all=[...teams.blue,...teams.red].filter(p=>gamePhase!=="practice" || p.practiceActive).sort((a,b)=>a.y-b.y);
   for(const p of all) drawPlayer(p);
-  drawBall();
+  if(gameMode==="deathmatch-explosive") drawExplosiveBall();
+  else drawBall();
 
   // subtle trap timing indicator around controlled player when ball is arriving
   const c=controlled();
@@ -3999,7 +4249,7 @@ trapBtn.addEventListener("pointercancel",releaseTrap);
 
 // DASH is a quick burst, not a hold-to-sprint button.
 dashBtn.addEventListener("pointerdown",e=>{
-  if(deathmatchState.active){
+  if(gameMode==="deathmatch"){
     e.preventDefault();
     fireBazooka(controlled());
     dashBtn.classList.add("active");
@@ -4282,6 +4532,8 @@ function bindMenuTap(el,fn){
 }
 
 bindMenuTap(deathmatchBtnEl,startDeathmatch);
+bindMenuTap(explosiveDeathmatchBtnEl,startExplosiveDeathmatch);
+bindMenuTap(dragonDeathmatchBtnEl,startDragonDeathmatch);
 
 bindMenuTap(soloPracticeBtnEl,()=>startPractice("solo"));
 bindMenuTap(partnerPracticeBtnEl,()=>startPractice("partner"));
@@ -4317,7 +4569,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v98";
+  if(v) v.textContent="v99";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v98";
+  if(b) b.textContent="v99";
 });
