@@ -637,3 +637,47 @@ body {
       #5b21b6 58% 72%,
       #7c3aed 72% 100%);
 }
+
+.day-cup-info{
+  margin:10px auto 14px;
+  max-width:650px;
+  white-space:pre-line;
+  text-align:left;
+  padding:10px 14px;
+  border-radius:12px;
+  background:rgba(255,255,255,.07);
+  font-size:clamp(11px,1.55vw,15px);
+  line-height:1.5;
+  font-weight:800;
+}
+
+
+/* ===== v66 FS.T locked team ===== */
+.team-card.locked-team {
+  opacity: .72;
+  filter: grayscale(1);
+  cursor: default;
+}
+
+.team-card.locked-team:active {
+  transform: none;
+}
+
+.kit-locked {
+  background:
+    repeating-linear-gradient(
+      135deg,
+      #4b5563 0 10px,
+      #6b7280 10px 20px
+    ) !important;
+  border-color: rgba(255,255,255,.18) !important;
+}
+
+.team-lock-text {
+  display:block;
+  margin-top:3px;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.12em;
+  opacity:.58;
+}

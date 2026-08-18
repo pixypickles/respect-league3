@@ -46,6 +46,7 @@ const resultKickerEl = document.getElementById("resultKicker");
 const resultTitleEl = document.getElementById("resultTitle");
 const resultScoreEl = document.getElementById("resultScore");
 const tournamentProgressEl = document.getElementById("tournamentProgress");
+const dayCupInfoEl = document.getElementById("dayCupInfo");
 const resultActionsEl = document.getElementById("resultActions");
 
 const W = 1280, H = 720;
@@ -53,7 +54,7 @@ const COURT = { x: 205, y: 62, w: 870, h: 596 };
 const GOAL_H = 210;
 const PLAYER_R = 20;
 const BALL_R = 9;
-const MATCH_SECONDS = 120;
+const MATCH_SECONDS = 90;
 
 const BLUE = "#2563eb";
 const RED = "#dc2626";
@@ -75,14 +76,30 @@ let gameMode=null;
 let gamePhase="menu";
 let tournamentOpponents=[];
 let tournamentRound=0;
-let bracketRound=0;
-let bracketSemiOpponent=null;
+let dayCup=null;
 let matchFinished=false;
 let practiceType=null;
 let tutorialIndex=0;
 let tutorialTimer=0;
 let tutorialFlags={};
 let practicePartner=null;
+
+
+const FST_UNLOCK_KEY="futsalTrapGame.fstUnlocked.v1";
+
+function isFstUnlocked(){
+  try{
+    return localStorage.getItem(FST_UNLOCK_KEY)==="1";
+  }catch(e){
+    return false;
+  }
+}
+
+function unlockFst(){
+  try{
+    localStorage.setItem(FST_UNLOCK_KEY,"1");
+  }catch(e){}
+}
 
 function teamDef(id){
   return TEAM_DEFS.find(t=>t.id===id) || TEAM_DEFS[0];
@@ -199,7 +216,32 @@ function makeTeamCard(t,onPick){
 
 function renderTeamSelection(){
   teamGridEl.innerHTML="";
+  const fstUnlocked=isFstUnlocked();
+
   for(const t of TEAM_DEFS){
+    if(t.id==="fst" && !fstUnlocked){
+      const btn=document.createElement("button");
+      btn.className="team-card locked-team";
+      btn.disabled=true;
+
+      const kit=document.createElement("div");
+      kit.className="kit-preview kit-locked";
+
+      const name=document.createElement("span");
+      name.className="team-name";
+      name.textContent="???";
+
+      const hint=document.createElement("small");
+      hint.className="team-lock-text";
+      hint.textContent="LOCKED";
+
+      btn.appendChild(kit);
+      btn.appendChild(name);
+      btn.appendChild(hint);
+      teamGridEl.appendChild(btn);
+      continue;
+    }
+
     teamGridEl.appendChild(makeTeamCard(t,(id)=>{
       selectedTeamId=id;
       selectedTeamNameEl.textContent=teamDef(id).name;
@@ -285,20 +327,148 @@ function prepareMatch(){
     input.pendingShotTimer=null;
   }
   updateScoreLabel();
-  clockEl.textContent="2:00";
+  clockEl.textContent="1:30";
   resetKickoff("blue");
 }
 
 
-function startBracketTournament(){
-  gameMode="bracket";
-  bracketRound=0;
 
-  // Player semifinal opponent: random non-FS.T, non-selected team.
-  const pool=TEAM_DEFS.filter(t=>t.id!==selectedTeamId && t.id!=="fst");
-  bracketSemiOpponent=pool[Math.floor(Math.random()*pool.length)]?.id || "takezo";
 
-  startMatch(bracketSemiOpponent);
+
+function shuffled(arr){
+  const a=arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return a;
+}
+
+function blankStanding(id){
+  return {id, p:0, w:0, d:0, l:0, gf:0, ga:0, pts:0};
+}
+
+function addStandingResult(table,a,b,ga,gb){
+  const A=table[a], B=table[b];
+  A.p++; B.p++;
+  A.gf+=ga; A.ga+=gb;
+  B.gf+=gb; B.ga+=ga;
+  if(ga>gb){ A.w++; B.l++; A.pts+=3; }
+  else if(ga<gb){ B.w++; A.l++; B.pts+=3; }
+  else { A.d++; B.d++; A.pts++; B.pts++; }
+}
+
+function standingSort(a,b){
+  if(b.pts!==a.pts) return b.pts-a.pts;
+  const gdA=a.gf-a.ga, gdB=b.gf-b.ga;
+  if(gdB!==gdA) return gdB-gdA;
+  if(b.gf!==a.gf) return b.gf-a.gf;
+  return Math.random()<.5?-1:1;
+}
+
+function simulateCpuScore(aId,bId,forceWinner=null){
+  const pa=TEAM_AI[aId] || TEAM_AI["takezo"];
+  const pb=TEAM_AI[bId] || TEAM_AI["takezo"];
+  const sa=(pa.pass+pa.dribble+pa.midShot+pa.gk*.6);
+  const sb=(pb.pass+pb.dribble+pb.midShot+pb.gk*.6);
+  let ga=Math.max(0,Math.floor(Math.random()*3 + (sa-sb)*.55));
+  let gb=Math.max(0,Math.floor(Math.random()*3 + (sb-sa)*.55));
+
+  if(forceWinner===aId && ga<=gb) ga=gb+1;
+  if(forceWinner===bId && gb<=ga) gb=ga+1;
+  return [ga,gb];
+}
+
+function groupMatches(group){
+  return [
+    [group[0],group[1]],
+    [group[0],group[2]],
+    [group[1],group[2]]
+  ];
+}
+
+function groupWinner(group,table){
+  return group.map(id=>table[id]).sort(standingSort)[0].id;
+}
+
+function dayCupStandingsText(){
+  if(!dayCup) return "";
+  const lines=[];
+  for(const label of ["A","B"]){
+    const ids=dayCup.groups[label];
+    const rows=ids.map(id=>dayCup.table[id]).sort(standingSort);
+    lines.push(`${label}グループ`);
+    rows.forEach((r,i)=>{
+      const gd=r.gf-r.ga;
+      lines.push(`${i+1}. ${teamDef(r.id).name}  勝点${r.pts}  得失点${gd>=0?"+":""}${gd}`);
+    });
+    if(label==="A") lines.push("");
+  }
+  return lines.join("\n");
+}
+
+function nextPlayerGroupOpponent(){
+  const group=dayCup.groups[dayCup.playerGroup];
+  return group.find(id=>id!==selectedTeamId && !dayCup.playedAgainst.includes(id)) || null;
+}
+
+function simulateRemainingCpuGroupMatches(){
+  for(const label of ["A","B"]){
+    const group=dayCup.groups[label];
+    for(const [a,b] of groupMatches(group)){
+      const key=[a,b].sort().join("__");
+      if(dayCup.completedMatches.has(key)) continue;
+      if(a===selectedTeamId || b===selectedTeamId) continue;
+
+      let force=null;
+      // If FS.T is in the opposite group, it must finish first and reach the final.
+      if(label!==dayCup.playerGroup && group.includes("fst")){
+        force="fst";
+      }
+      const [ga,gb]=simulateCpuScore(a,b,force);
+      addStandingResult(dayCup.table,a,b,ga,gb);
+      dayCup.completedMatches.add(key);
+      dayCup.cpuResults.push(`${teamDef(a).name} ${ga}-${gb} ${teamDef(b).name}`);
+    }
+  }
+}
+
+function startDayCup(){
+  gameMode="daycup";
+  const ids=TEAM_DEFS.map(t=>t.id);
+  const others=shuffled(ids.filter(id=>id!==selectedTeamId));
+
+  // Randomly choose which group the player enters, then fill 3+3.
+  const playerGroup=Math.random()<.5?"A":"B";
+  const otherGroup=playerGroup==="A"?"B":"A";
+  const playerGroupMembers=[selectedTeamId,others[0],others[1]];
+  const otherGroupMembers=[others[2],others[3],others[4]];
+
+  dayCup={
+    playerGroup,
+    groups:{A:[],B:[]},
+    table:{},
+    playedAgainst:[],
+    completedMatches:new Set(),
+    cpuResults:[],
+    stage:"group"
+  };
+  dayCup.groups[playerGroup]=shuffled(playerGroupMembers);
+  dayCup.groups[otherGroup]=shuffled(otherGroupMembers);
+
+  for(const id of ids) dayCup.table[id]=blankStanding(id);
+
+  simulateRemainingCpuGroupMatches();
+
+  const opp=nextPlayerGroupOpponent();
+  startMatch(opp);
+}
+
+function registerDayCupPlayerResult(){
+  const a=selectedTeamId, b=opponentTeamId;
+  addStandingResult(dayCup.table,a,b,scoreBlue,scoreRed);
+  dayCup.playedAgainst.push(b);
+  dayCup.completedMatches.add([a,b].sort().join("__"));
 }
 
 function startMatch(opponentId){
@@ -321,8 +491,8 @@ function returnToMainMenu(){
   gamePhase="menu";
   tournamentOpponents=[];
   tournamentRound=0;
-  bracketRound=0;
-  bracketSemiOpponent=null;
+  dayCup=null;
+  renderTeamSelection();
   setMenuScreen(teamScreenEl);
 }
 
@@ -336,47 +506,82 @@ function finishMatch(){
   resultScoreEl.textContent=`${scoreBlue} - ${scoreRed}`;
   resultKickerEl.textContent=
     gameMode==="tournament" ? `TOURNAMENT ${tournamentRound+1}/4` :
-    gameMode==="bracket" ? (bracketRound===0 ? "TOURNAMENT SEMIFINAL" : "TOURNAMENT FINAL") :
+    gameMode==="daycup" ? (dayCup && dayCup.stage==="final" ? "ONE DAY CUP FINAL" : "ONE DAY CUP") :
     "FREE MATCH";
   tournamentProgressEl.textContent="";
+  dayCupInfoEl.textContent="";
 
   if(gameMode==="free"){
     const rec=addFreeRecord(selectedTeamId,opponentTeamId,scoreBlue,scoreRed);
     tournamentProgressEl.textContent=`対戦成績 ${rec.w}勝 ${rec.d}分 ${rec.l}敗`;
   }
 
-  if(gameMode==="bracket"){
-    if(scoreBlue>scoreRed){
-      if(bracketRound===0){
-        resultTitleEl.textContent="決勝進出";
-        tournamentProgressEl.textContent="次戦：FS.T";
-        addResultButton("決勝へ",true,()=>{
-          bracketRound=1;
-          startMatch("fst");
-        });
+  if(gameMode==="daycup"){
+    if(dayCup.stage==="group"){
+      registerDayCupPlayerResult();
+      dayCupInfoEl.textContent=dayCupStandingsText();
+
+      const nextOpp=nextPlayerGroupOpponent();
+      if(nextOpp){
+        resultTitleEl.textContent=scoreBlue>scoreRed?"WIN":(scoreBlue<scoreRed?"LOSE":"DRAW");
+        tournamentProgressEl.textContent=`グループステージ ${dayCup.playedAgainst.length}/2`;
+        addResultButton("次の試合へ",true,()=>startMatch(nextOpp));
         addResultButton("終了",false,returnToMainMenu);
       }else{
-        resultTitleEl.textContent="優勝！";
-        tournamentProgressEl.textContent="トーナメント制覇";
-        addResultButton("チーム選択へ",true,returnToMainMenu);
+        simulateRemainingCpuGroupMatches();
+        const myWinner=groupWinner(dayCup.groups[dayCup.playerGroup],dayCup.table);
+        const otherGroup=dayCup.playerGroup==="A"?"B":"A";
+        let otherWinner=groupWinner(dayCup.groups[otherGroup],dayCup.table);
+
+        // Opposite-group FS.T is guaranteed to reach the final.
+        if(dayCup.groups[otherGroup].includes("fst")) otherWinner="fst";
+
+        dayCupInfoEl.textContent=dayCupStandingsText();
+
+        if(myWinner!==selectedTeamId){
+          resultTitleEl.textContent="グループステージ敗退";
+          tournamentProgressEl.textContent="各グループ1位のみ決勝進出";
+          addResultButton("もう一度",true,startDayCup);
+          addResultButton("チーム選択へ",false,returnToMainMenu);
+        }else{
+          resultTitleEl.textContent="決勝進出";
+          tournamentProgressEl.textContent=`決勝：${teamDef(otherWinner).name}`;
+          dayCup.stage="final";
+          dayCup.finalOpponent=otherWinner;
+          addResultButton("決勝へ",true,()=>startMatch(otherWinner));
+          addResultButton("終了",false,returnToMainMenu);
+        }
       }
-    }else if(scoreBlue===scoreRed){
-      resultTitleEl.textContent="DRAW";
-      tournamentProgressEl.textContent=bracketRound===0?"準決勝 再戦":"決勝 再戦";
-      addResultButton("再戦",true,()=>startMatch(bracketRound===0?bracketSemiOpponent:"fst"));
-      addResultButton("終了",false,returnToMainMenu);
     }else{
-      resultTitleEl.textContent="敗退";
-      tournamentProgressEl.textContent=bracketRound===0?"準決勝敗退":"準優勝";
-      addResultButton("もう一度挑戦",true,startBracketTournament);
-      addResultButton("チーム選択へ",false,returnToMainMenu);
+      if(scoreBlue>scoreRed){
+        unlockFst();
+        resultTitleEl.textContent="優勝！";
+        tournamentProgressEl.textContent="ワンデイ大会 優勝 / FS.T 解放";
+      }else{
+        resultTitleEl.textContent=scoreBlue<scoreRed?"準優勝":"DRAW";
+        tournamentProgressEl.textContent=scoreBlue===scoreRed?"決勝は再戦":"ワンデイ大会 終了";
+      }
+
+      if(scoreBlue===scoreRed){
+        addResultButton("決勝再戦",true,()=>startMatch(dayCup.finalOpponent));
+      }else{
+        addResultButton("もう一度",true,startDayCup);
+      }
+      addResultButton("チーム選択へ",false,()=>{
+        renderTeamSelection();
+        returnToMainMenu();
+      });
     }
   } else if(gameMode==="tournament"){
     if(scoreBlue>scoreRed){
       if(tournamentRound>=3){
+        unlockFst();
         resultTitleEl.textContent="優勝！";
-        tournamentProgressEl.textContent="4試合勝ち抜き達成";
-        addResultButton("チーム選択へ",true,returnToMainMenu);
+        tournamentProgressEl.textContent="4試合勝ち抜き達成 / FS.T 解放";
+        addResultButton("チーム選択へ",true,()=>{
+          renderTeamSelection();
+          returnToMainMenu();
+        });
       } else {
         resultTitleEl.textContent="WIN";
         tournamentProgressEl.textContent=`${tournamentRound+1}勝 / 4勝`;
@@ -2760,7 +2965,7 @@ bindMenuTap(partnerPracticeBtnEl,()=>startPractice("partner"));
 bindMenuTap(practiceBackBtnEl,()=>setMenuScreen(modeScreenEl));
 tutorialExitBtnEl.addEventListener("click",endPractice);
 
-bindMenuTap(bracketBtnEl,startBracketTournament);
+bindMenuTap(bracketBtnEl,startDayCup);
 
 bindMenuTap(freeMatchBtnEl,()=>{
   renderOpponentSelection();
