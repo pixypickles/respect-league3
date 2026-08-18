@@ -1,4 +1,4 @@
-const GAME_VERSION="v78";
+const GAME_VERSION="v79";
 (() => {
 "use strict";
 
@@ -330,6 +330,7 @@ function prepareMatch(){
   input.comboStage=0;
   input.comboUntil=0;
   input.lastDashTapAt=-9999;
+  input.trapPressBuffer=0;
   input.shootDown=false;
   input.shootBallLock=false;
   if(input.pendingShotTimer!==null){
@@ -759,6 +760,7 @@ const input = {
   stickActive: false,
   trap: false,
   trapGraceTimer: 0,
+  trapPressBuffer: 0,
   dash: false,
   dashTimer: 0,
   dashCooldown: 0,
@@ -1002,6 +1004,7 @@ function bestPassTarget(p, inputDir=null) {
 
 
 function nearbyLooseBallFor(p, radius=84) {
+  if(techniqueBallReservedFor(p)) return false;
   if(nutmegProtectedAgainst(p) || trickProtectedAgainst(p)) return false;
   return !ball.owner && ball.z<34 && dist(p,ball)<=radius;
 }
@@ -1234,10 +1237,23 @@ function playerShoot(p, chargeSec, superShot=false) {
 function trapWindowFor(p) {
   if(ball.owner) return false;
   const d=dist(p,ball);
-  return d < 42 + Math.min(32, Math.hypot(ball.vx,ball.vy)*.045) && ball.z<28;
+  const speed=Math.hypot(ball.vx,ball.vy);
+
+  // v79: slightly more forgiving receiving window.
+  // Faster passes get a larger reach allowance.
+  return d < 50 + Math.min(40, speed*.055) && ball.z<34;
 }
 
 function attemptTrap(p, dt) {
+  // During nutmeg/double-touch, only the attacker may touch the ball.
+  // Opposing GK may still use the dedicated just-timed TRAP save below.
+  if(techniqueBallReservedFor(p)){
+    if(p.role==="gk" && (nutmegProtectedAgainst(p) || trickProtectedAgainst(p))){
+      return gkTimedTrickSave(p);
+    }
+    return false;
+  }
+
   if(p.role==="gk" && (nutmegProtectedAgainst(p) || trickProtectedAgainst(p))){
     return gkTimedTrickSave(p);
   }
@@ -1275,7 +1291,7 @@ function attemptTrap(p, dt) {
     // It must never steal priority from PASS / SHOT input.
     const slowLoose = speed < 115 && ball.z < 14 && !ball.passTarget && p.autoControlTimer<=0;
 
-    if(input.trap || (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
+    if(input.trap || input.trapPressBuffer>0 || (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
       ball.owner=p;
       ball.passTarget=null;
       ball.vx=ball.vy=ball.vz=0;
@@ -1284,9 +1300,10 @@ function attemptTrap(p, dt) {
       ball.touchGrace=.18;
       ball.protectedTeam=p.team;
       p.possessionTime=0;
-      p.kickAnim = input.trap ? .16 : 0;
+      const manualTrap=input.trap || input.trapPressBuffer>0;
+      p.kickAnim = manualTrap ? .16 : 0;
 
-      if(slowLoose && !input.trap){
+      if(slowLoose && !manualTrap){
         // Brief settle only. The player can immediately PASS or SHOT.
         p.autoControlTimer=.28;
         p.kickAnim=0;
@@ -1295,6 +1312,7 @@ function attemptTrap(p, dt) {
       } else {
         showMessage(speed>500?"SUPER TRAP!":"TRAP!",.38);
       }
+      if(manualTrap) input.trapPressBuffer=0;
       return true;
     }
   }
@@ -1368,6 +1386,8 @@ function stealProtectedAgainst(p){
 }
 
 function shortTrapSteal(actor) {
+  if(techniqueBallReservedFor(actor)) return false;
+
   if(trickProtectedAgainst(actor)) return false;
   if(nutmegProtectedAgainst(actor)) return false;
   if(stealProtectedAgainst(actor)) return false;
@@ -1416,6 +1436,8 @@ function shortTrapSteal(actor) {
 }
 
 function defensivePoke(actor) {
+  if(techniqueBallReservedFor(actor)) return false;
+
   if(trickProtectedAgainst(actor)) return false;
   if(nutmegProtectedAgainst(actor)) return false;
   if(stealProtectedAgainst(actor)) return false;
@@ -1506,6 +1528,8 @@ function shoulderCharge(actor) {
 }
 
 function checkSlideSteal(p) {
+  if(techniqueBallReservedFor(p)) return;
+
   if(trickProtectedAgainst(p)) return;
   if(nutmegProtectedAgainst(p)) return;
   if(p.slide<=0) return;
@@ -1864,7 +1888,7 @@ function updateAI(p,dt) {
   if(p.controlled){updateControlled(p,dt);return;}
   if(p.slide>0)return;
 
-  if(!ball.owner && nearbyLooseBallFor(p,74) && !nutmegProtectedAgainst(p)) {
+  if(!ball.owner && nearbyLooseBallFor(p,74) && !nutmegProtectedAgainst(p) && !techniqueBallReservedFor(p)) {
     const squad=teamPlayers(p.team).filter(q=>q.role!=="gk" && !q.controlled);
     const nearest=squad.slice().sort((a,b)=>dist(a,ball)-dist(b,ball))[0];
     if(nearest===p && ball.touchGrace<=0) {
@@ -2090,6 +2114,7 @@ function updateGK(p,dt) {
 
 function updatePhysics(dt) {
   input.actionPriorityTimer=Math.max(0,input.actionPriorityTimer-dt);
+  input.trapPressBuffer=Math.max(0,input.trapPressBuffer-dt);
   input.postKickNoAutoTrap=Math.max(0,input.postKickNoAutoTrap-dt);
   ball.touchGrace=Math.max(0,ball.touchGrace-dt);
   ball.trickProtectTimer=Math.max(0,ball.trickProtectTimer-dt);
@@ -2221,6 +2246,7 @@ function updatePhysics(dt) {
 
     for(const p of all) {
       if(p.cooldown>.16) continue;
+      if(techniqueBallReservedFor(p) && p.role!=="gk") continue;
       if(attemptTrap(p,dt)) break;
     }
   }
@@ -2772,6 +2798,17 @@ function sfx(name){ return; }
 
 
 
+
+function techniqueBallReservedFor(p){
+  if(ball.nutmegTimer>0 && ball.passFrom){
+    return p!==ball.passFrom;
+  }
+  if(ball.trickProtectTimer>0 && ball.trickAttacker){
+    return p!==ball.trickAttacker;
+  }
+  return false;
+}
+
 function trickProtectedAgainst(p){
   return !!(
     p &&
@@ -2826,15 +2863,15 @@ function tryDoubleTouch(attacker){
   // Half-step sideways + forward burst.
   attacker.x=clamp(attacker.x+side.x*26+face.x*14,COURT.x+25,COURT.x+COURT.w-25);
   attacker.y=clamp(attacker.y+side.y*26+face.y*14,COURT.y+25,COURT.y+COURT.h-25);
-  attacker.vx=face.x*285+side.x*180;
-  attacker.vy=face.y*285+side.y*180;
+  attacker.vx=face.x*320+side.x*190;
+  attacker.vy=face.y*320+side.y*190;
   attacker.dirX=face.x;
   attacker.dirY=face.y;
   attacker.cooldown=.10;
 
   ball.owner=attacker;
   ball.lastTouch=attacker;
-  ball.trickProtectTimer=.42;
+  ball.trickProtectTimer=.48;
   ball.trickProtectTeam=attacker.team;
   ball.trickAttacker=attacker;
   ball.trickTarget=defender;
@@ -2896,7 +2933,7 @@ function tryNutmeg(attacker){
   ball.passTarget=null;
   ball.lastTouch=attacker;
   ball.passFrom=attacker;
-  ball.nutmegTimer=.52;
+  ball.nutmegTimer=.58;
   ball.nutmegTeam=attacker.team;
   ball.nutmegTarget=defender;
 
@@ -2913,7 +2950,7 @@ function tryNutmeg(attacker){
   ball.protectedTeam=attacker.team;
 
   // Attacker follows with a fast burst.
-  input.dashTimer=.46;
+  input.dashTimer=.50;
   input.dashCooldown=.48;
   attacker.vx=face.x*410;
   attacker.vy=face.y*410;
@@ -2970,7 +3007,8 @@ trapBtn.addEventListener("pointerdown",e=>{
   trapPointer=e.pointerId;
   trapBtn.setPointerCapture(trapPointer);
   input.trap=true;
-  input.trapGraceTimer=.22;
+  input.trapGraceTimer=.26;
+  input.trapPressBuffer=.18;
   trapBtn.classList.add("active");
 
   const c=controlled();
@@ -2999,7 +3037,7 @@ trapBtn.addEventListener("pointerdown",e=>{
 function releaseTrap(e){
   if(trapPointer!==null && (!e || e.pointerId===trapPointer)){
     input.trap=false;
-    input.trapGraceTimer=Math.max(input.trapGraceTimer,.22);
+    input.trapGraceTimer=Math.max(input.trapGraceTimer,.26);
     trapBtn.classList.remove("active");
     trapPointer=null;
   }
