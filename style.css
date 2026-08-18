@@ -629,3 +629,11 @@ body {
   opacity:.72;
   font-weight:800;
 }
+
+.kit-fst{
+  background:
+    linear-gradient(to bottom,
+      #7c3aed 0 58%,
+      #5b21b6 58% 72%,
+      #7c3aed 72% 100%);
+}

@@ -29,6 +29,7 @@ const teamGridEl = document.getElementById("teamGrid");
 const opponentGridEl = document.getElementById("opponentGrid");
 const selectedTeamNameEl = document.getElementById("selectedTeamName");
 const tournamentBtnEl = document.getElementById("tournamentBtn");
+const bracketBtnEl = document.getElementById("bracketBtn");
 const freeMatchBtnEl = document.getElementById("freeMatchBtn");
 const practiceBtnEl = document.getElementById("practiceBtn");
 const practiceScreenEl = document.getElementById("practiceScreen");
@@ -64,7 +65,8 @@ const TEAM_DEFS = [
   {id:"salvida-a", name:"SALVIDA A", kit:"salvida-a", primary:"#7a1832", secondary:"#7a1832", sleeve:"#ffffff"},
   {id:"salvida-b", name:"SALVIDA B", kit:"salvida-b", primary:"#22c7c4", secondary:"#22c7c4", sleeve:"#ffffff"},
   {id:"takezo", name:"TAKE-ZO", kit:"takezo", primary:"#f05aa6", secondary:"#172554", sleeve:"#f05aa6", sleeve2:"#172554"},
-  {id:"manchester-p", name:"漫チェスターP", kit:"manchester-p", primary:"#081a3a", secondary:"#081a3a", sleeve:"#081a3a"}
+  {id:"manchester-p", name:"漫チェスターP", kit:"manchester-p", primary:"#081a3a", secondary:"#081a3a", sleeve:"#081a3a"},
+  {id:"fst", name:"FS.T", kit:"fst", primary:"#7c3aed", secondary:"#5b21b6", sleeve:"#6d28d9"}
 ];
 
 let selectedTeamId="blizzard";
@@ -73,6 +75,8 @@ let gameMode=null;
 let gamePhase="menu";
 let tournamentOpponents=[];
 let tournamentRound=0;
+let bracketRound=0;
+let bracketSemiOpponent=null;
 let matchFinished=false;
 let practiceType=null;
 let tutorialIndex=0;
@@ -93,8 +97,15 @@ const TEAM_AI = {
   "salvida-a":  {pass:0.72, dribble:0.28, nutmeg:0.05, midShot:0.10, hold:.78, gk:1.00, post:true},
   "salvida-b":  {pass:0.28, dribble:0.88, nutmeg:0.72, midShot:0.12, hold:.46, gk:1.00, post:false},
   "takezo":     {pass:0.58, dribble:0.58, nutmeg:0.22, midShot:0.18, hold:.60, gk:1.00, post:false},
-  "manchester-p":{pass:0.42, dribble:0.38, nutmeg:0.08, midShot:0.78, hold:.54, gk:1.00, post:false}
+  "manchester-p":{pass:0.42, dribble:0.38, nutmeg:0.08, midShot:0.78, hold:.54, gk:1.00, post:false},
+  "fst":         {pass:0.78, dribble:0.72, nutmeg:0.34, midShot:0.42, hold:.46, gk:1.18, post:false}
 };
+
+
+function teamStrengthFor(teamSide){
+  const id=sideTeam(teamSide).id;
+  return id==="fst" ? 1.07 : 1;
+}
 
 function aiProfileFor(p){
   return TEAM_AI[sideTeam(p.team).id] || TEAM_AI["takezo"];
@@ -278,6 +289,18 @@ function prepareMatch(){
   resetKickoff("blue");
 }
 
+
+function startBracketTournament(){
+  gameMode="bracket";
+  bracketRound=0;
+
+  // Player semifinal opponent: random non-FS.T, non-selected team.
+  const pool=TEAM_DEFS.filter(t=>t.id!==selectedTeamId && t.id!=="fst");
+  bracketSemiOpponent=pool[Math.floor(Math.random()*pool.length)]?.id || "takezo";
+
+  startMatch(bracketSemiOpponent);
+}
+
 function startMatch(opponentId){
   opponentTeamId=opponentId;
   gamePhase="match";
@@ -298,6 +321,8 @@ function returnToMainMenu(){
   gamePhase="menu";
   tournamentOpponents=[];
   tournamentRound=0;
+  bracketRound=0;
+  bracketSemiOpponent=null;
   setMenuScreen(teamScreenEl);
 }
 
@@ -309,7 +334,10 @@ function finishMatch(){
   ball.vx=ball.vy=ball.vz=0;
   resultActionsEl.innerHTML="";
   resultScoreEl.textContent=`${scoreBlue} - ${scoreRed}`;
-  resultKickerEl.textContent=gameMode==="tournament" ? `TOURNAMENT ${tournamentRound+1}/4` : "FREE MATCH";
+  resultKickerEl.textContent=
+    gameMode==="tournament" ? `TOURNAMENT ${tournamentRound+1}/4` :
+    gameMode==="bracket" ? (bracketRound===0 ? "TOURNAMENT SEMIFINAL" : "TOURNAMENT FINAL") :
+    "FREE MATCH";
   tournamentProgressEl.textContent="";
 
   if(gameMode==="free"){
@@ -317,7 +345,33 @@ function finishMatch(){
     tournamentProgressEl.textContent=`対戦成績 ${rec.w}勝 ${rec.d}分 ${rec.l}敗`;
   }
 
-  if(gameMode==="tournament"){
+  if(gameMode==="bracket"){
+    if(scoreBlue>scoreRed){
+      if(bracketRound===0){
+        resultTitleEl.textContent="決勝進出";
+        tournamentProgressEl.textContent="次戦：FS.T";
+        addResultButton("決勝へ",true,()=>{
+          bracketRound=1;
+          startMatch("fst");
+        });
+        addResultButton("終了",false,returnToMainMenu);
+      }else{
+        resultTitleEl.textContent="優勝！";
+        tournamentProgressEl.textContent="トーナメント制覇";
+        addResultButton("チーム選択へ",true,returnToMainMenu);
+      }
+    }else if(scoreBlue===scoreRed){
+      resultTitleEl.textContent="DRAW";
+      tournamentProgressEl.textContent=bracketRound===0?"準決勝 再戦":"決勝 再戦";
+      addResultButton("再戦",true,()=>startMatch(bracketRound===0?bracketSemiOpponent:"fst"));
+      addResultButton("終了",false,returnToMainMenu);
+    }else{
+      resultTitleEl.textContent="敗退";
+      tournamentProgressEl.textContent=bracketRound===0?"準決勝敗退":"準優勝";
+      addResultButton("もう一度挑戦",true,startBracketTournament);
+      addResultButton("チーム選択へ",false,returnToMainMenu);
+    }
+  } else if(gameMode==="tournament"){
     if(scoreBlue>scoreRed){
       if(tournamentRound>=3){
         resultTitleEl.textContent="優勝！";
@@ -1464,7 +1518,8 @@ function aiWithBall(p,dt) {
     const shotChance=prof.midShot>.5 ? prof.midShot : .82;
     if(goalDist<middleRange && Math.abs(p.y-goalY)<205 && near.d>68 && Math.random()<shotChance) {
       const aimY=goalY+rand(-82,82);
-      const shotSpeed=prof.midShot>.5 ? rand(520,650) : rand(470,610);
+      let shotSpeed=prof.midShot>.5 ? rand(520,650) : rand(470,610);
+      if(sideTeam(p.team).id==="fst") shotSpeed*=1.08;
       kickBall(p,goalX-p.x,aimY-p.y,shotSpeed,rand(16,42),true,null);
       return;
     }
@@ -2094,6 +2149,9 @@ function drawSlideKit(p){
   } else if(kit.kit==="takezo"){
     ctx.fillStyle="#172554";ctx.fillRect(-23,-11,48,22);
     ctx.fillStyle="#f05aa6";ctx.fillRect(-23,-7,48,7);ctx.fillRect(-23,6,48,7);
+  } else if(kit.kit==="fst"){
+    ctx.fillStyle="#7c3aed";ctx.fillRect(-23,-11,48,22);
+    ctx.fillStyle="#5b21b6";ctx.fillRect(-23,2,48,6);
   } else {
     ctx.fillStyle=kit.primary;ctx.fillRect(-23,-11,48,22);
   }
@@ -2697,6 +2755,8 @@ bindMenuTap(soloPracticeBtnEl,()=>startPractice("solo"));
 bindMenuTap(partnerPracticeBtnEl,()=>startPractice("partner"));
 bindMenuTap(practiceBackBtnEl,()=>setMenuScreen(modeScreenEl));
 tutorialExitBtnEl.addEventListener("click",endPractice);
+
+bracketBtnEl.addEventListener("click",startBracketTournament);
 
 freeMatchBtnEl.addEventListener("click",()=>{
   renderOpponentSelection();
