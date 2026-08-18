@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v105";
+const GAME_VERSION="v106";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -187,7 +187,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v105: selected team + 3 random opponents = 4-team single round robin.
+  // v106: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -243,6 +243,7 @@ let deathmatchState={
   enemyFireTimer:1.8,
   explosion:null,
   explosiveImpactCooldown:0,
+  explosiveWallCooldown:0,
   dragonFireTimer:2.1,
   dragonIceTimer:3.0,
   dragonFireball:null,
@@ -389,7 +390,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  // v105: prevent the same touch from falling through into the newly shown screen.
+  // v106: prevent the same touch from falling through into the newly shown screen.
   menuTransitionLockUntil=performance.now()+360;
 
   for(const el of [teamScreenEl,modeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl]){
@@ -728,7 +729,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v105: vertical hazard lines only, evenly spaced.
+  // v106: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -768,6 +769,7 @@ function startExplosiveDeathmatch(){
   deathmatchState.enemyBazookaUser=null;
   deathmatchState.explosion=null;
   deathmatchState.explosiveImpactCooldown=0;
+  deathmatchState.explosiveWallCooldown=0;
   deathmatchState.lines=[];
   if(dashBtn) dashBtn.textContent="DASH";
 
@@ -825,12 +827,44 @@ function explosiveGKImpact(gk){
   }
 }
 
+
+function nudgeExplosiveBallOffWall(){
+  if(gameMode!=="deathmatch-explosive") return;
+
+  const margin=BALL_R+18;
+  let pushX=0,pushY=0;
+
+  if(ball.x<=COURT.x+margin) pushX=1;
+  else if(ball.x>=COURT.x+COURT.w-margin) pushX=-1;
+
+  if(ball.y<=COURT.y+margin) pushY=1;
+  else if(ball.y>=COURT.y+COURT.h-margin) pushY=-1;
+
+  // If caught in a corner, push diagonally toward the center.
+  if(pushX!==0 || pushY!==0){
+    const n=norm(pushX,pushY);
+    ball.x=clamp(ball.x+n.x*28,COURT.x+BALL_R+8,COURT.x+COURT.w-BALL_R-8);
+    ball.y=clamp(ball.y+n.y*28,COURT.y+BALL_R+8,COURT.y+COURT.h-BALL_R-8);
+
+    // Cancel the wall-normal velocity so it does not immediately re-hit.
+    if(pushX!==0) ball.vx=n.x*Math.max(90,Math.abs(ball.vx)*.32);
+    if(pushY!==0) ball.vy=n.y*Math.max(90,Math.abs(ball.vy)*.32);
+    ball.vz=Math.min(ball.vz,35);
+  }
+}
+
 function updateExplosiveBall(dt){
   if(gameMode!=="deathmatch-explosive") return;
-  deathmatchState.explosiveImpactCooldown=Math.max(0,deathmatchState.explosiveImpactCooldown-dt);
+
+  deathmatchState.explosiveImpactCooldown=
+    Math.max(0,deathmatchState.explosiveImpactCooldown-dt);
+  deathmatchState.explosiveWallCooldown=
+    Math.max(0,deathmatchState.explosiveWallCooldown-dt);
 
   // Player contact triggers an explosion when the loose ball is moving.
-  if(!ball.owner && Math.hypot(ball.vx,ball.vy)>95 && deathmatchState.explosiveImpactCooldown<=0){
+  if(!ball.owner &&
+     Math.hypot(ball.vx,ball.vy)>95 &&
+     deathmatchState.explosiveImpactCooldown<=0){
     for(const p of [...teams.blue,...teams.red]){
       if(Math.hypot(p.x-ball.x,p.y-ball.y)<24){
         explodeDangerBall("player");
@@ -839,12 +873,25 @@ function updateExplosiveBall(dt){
     }
   }
 
-  // Court-wall contact triggers an explosion.
+  // Wall contact: one explosion, then push the ball back into the court.
   const nearWall=
-    ball.x<=COURT.x+BALL_R+2 || ball.x>=COURT.x+COURT.w-BALL_R-2 ||
-    ball.y<=COURT.y+BALL_R+2 || ball.y>=COURT.y+COURT.h-BALL_R-2;
-  if(nearWall && Math.hypot(ball.vx,ball.vy)>120){
+    ball.x<=COURT.x+BALL_R+2 ||
+    ball.x>=COURT.x+COURT.w-BALL_R-2 ||
+    ball.y<=COURT.y+BALL_R+2 ||
+    ball.y>=COURT.y+COURT.h-BALL_R-2;
+
+  if(nearWall &&
+     Math.hypot(ball.vx,ball.vy)>120 &&
+     deathmatchState.explosiveWallCooldown<=0){
     explodeDangerBall("wall");
+
+    // Give wall/corner impacts a longer lockout than player impacts.
+    deathmatchState.explosiveWallCooldown=.72;
+    deathmatchState.explosiveImpactCooldown=Math.max(
+      deathmatchState.explosiveImpactCooldown,.28
+    );
+
+    nudgeExplosiveBallOffWall();
   }
 
   if(deathmatchState.explosion){
@@ -1166,7 +1213,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v105: forward is always the attacking direction, never toward own goal.
+  // v106: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -2221,7 +2268,7 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
-  // v105: TRAP must not vacuum a loose ball from a distance.
+  // v106: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -2272,7 +2319,7 @@ function attemptTrap(p, dt) {
     const slowLoose = speed < 115 && ball.z < 14 && !ball.passTarget && p.autoControlTimer<=0;
 
     if(input.trap || input.trapPressBuffer>0 || (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v105: never stop/snap a ball unless it is genuinely at the feet.
+      // v106: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -2319,7 +2366,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v105: CPU also needs real contact before claiming/stopping the ball.
+      // v106: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -2791,7 +2838,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v105: any AI field player may shoot when the chance is clearly good.
+  // v106: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3183,7 +3230,7 @@ function updateGK(p,dt) {
 }
 
 function updatePhysics(dt) {
-  // v105: in DEATHMATCH a loose ball must physically reach the feet.
+  // v106: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -3778,7 +3825,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v105: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v106: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -5006,7 +5053,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v105";
+  if(v) v.textContent="v106";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v105";
+  if(b) b.textContent="v106";
 });
