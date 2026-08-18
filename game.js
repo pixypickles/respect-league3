@@ -1,4 +1,4 @@
-const GAME_VERSION="v73";
+const GAME_VERSION="v74";
 (() => {
 "use strict";
 
@@ -75,6 +75,7 @@ const TEAM_DEFS = [
 ];
 
 let selectedTeamId="blizzard";
+let opponentPickLockUntil=0;
 let opponentTeamId="salvida-a";
 let gameMode=null;
 let gamePhase="menu";
@@ -300,6 +301,8 @@ function renderOpponentSelection(){
   for(const t of TEAM_DEFS){
     if(t.id===selectedTeamId) continue;
     const card=makeTeamCard(t,(id)=>{
+      // Ignore the same touch/click that opened this screen.
+      if(performance.now()<opponentPickLockUntil) return;
       gameMode="free";
       startMatch(id);
     });
@@ -1362,11 +1365,11 @@ function shortTrapSteal(actor) {
   const enemyOwner = ball.owner && ball.owner.team!==actor.team ? ball.owner : null;
 
   // Shorter reach than PASS poke / SHOULDER.
-  if(enemyOwner && dist(actor,enemyOwner)<42) {
+  if(enemyOwner && dist(actor,enemyOwner)<32) {
     const face=norm(actor.dirX,actor.dirY);
     const to=norm(enemyOwner.x-actor.x,enemyOwner.y-actor.y);
     const alignment=face.x*to.x+face.y*to.y;
-    if(alignment<-.15) return false;
+    if(alignment<.12) return false;
 
     ball.owner=null;
     ball.passTarget=null;
@@ -1383,7 +1386,7 @@ function shortTrapSteal(actor) {
   }
 
   // Can also stab at a very nearby loose ball.
-  if(!ball.owner && dist(actor,ball)<38 && ball.z<18){
+  if(!ball.owner && dist(actor,ball)<32 && ball.z<18){
     const face=norm(actor.dirX,actor.dirY);
     ball.vx=face.x*120;
     ball.vy=face.y*120;
@@ -2805,7 +2808,7 @@ trapBtn.addEventListener("pointerdown",e=>{
 
   // On defense, TRAP is a short-range foot steal.
   if((ball.owner && ball.owner.team!=="blue") ||
-     (!ball.owner && dist(c,ball)<42)){
+     (!ball.owner && dist(c,ball)<32)){
     shortTrapSteal(c);
   }
 });
@@ -3046,6 +3049,7 @@ tutorialExitBtnEl.addEventListener("click",endPractice);
 bindMenuTap(bracketBtnEl,startDayCup);
 
 bindMenuTap(freeMatchBtnEl,()=>{
+  opponentPickLockUntil=performance.now()+420;
   renderOpponentSelection();
   setMenuScreen(opponentScreenEl);
 });
