@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v92";
+const GAME_VERSION="v93";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -4080,6 +4080,9 @@ function bindMenuTap(el,fn){
   el.addEventListener("click",run);
   el.addEventListener("pointerup",run);
 }
+
+bindMenuTap(deathmatchBtnEl,startDeathmatch);
+
 bindMenuTap(soloPracticeBtnEl,()=>startPractice("solo"));
 bindMenuTap(partnerPracticeBtnEl,()=>startPractice("partner"));
 bindMenuTap(practiceBackBtnEl,()=>setMenuScreen(modeScreenEl));
@@ -4114,8 +4117,8 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v92";
+  if(v) v.textContent="v93";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v92";
+  if(b) b.textContent="v93";
 });bindMenuTap(deathmatchBtnEl,startDeathmatch);
 

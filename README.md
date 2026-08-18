@@ -712,3 +712,10 @@ GitHub Pagesへそのまま配置して遊べます。
 - 弾は選手または壁に当たると爆発
 - 爆発範囲内の選手・GKを吹き飛ばす
 - 爆風でボールも弾かれる
+
+## v93 デスマッチボタンエラー修正
+- `bindMenuTap is not defined` を修正
+- デスマッチボタンのイベント登録を bindMenuTap 定義後へ移動
+- deathmatchBtnEl のDOM参照位置も確認
+- game.js?v=93 でキャッシュ回避
+- 黄色いv93表示は維持
