@@ -1,4 +1,4 @@
-const GAME_VERSION="v84";
+const GAME_VERSION="v86";
 (() => {
 "use strict";
 
@@ -941,6 +941,9 @@ function resetKickoff(team="blue") {
   ball.dashProtectTimer=0; ball.dashProtectTeam=null;
   ball.nutmegTimer=0; ball.nutmegTeam=null; ball.nutmegTarget=null;
   ball.stealProtectTimer=0; ball.stealProtectTeam=null;
+  foulPause=0;
+  pendingFreeKick=null;
+  if(foulOverlayEl) foulOverlayEl.classList.add("hidden");
   starter.possessionTime=0;
 }
 
@@ -2380,6 +2383,16 @@ function update(dt) {
   if(gamePhase==="practice"){
     }
   if(messageTimer>0){messageTimer-=dt;if(messageTimer<=0)msgEl.style.opacity="0";}
+
+  if(foulPause>0){
+    foulPause-=dt;
+    if(foulPause<=0){
+      foulPause=0;
+      resumeFreeKick();
+    }
+    return;
+  }
+
   if(goalPause>0) {
     goalPause-=dt;
     if(goalPause<=0) resetKickoff(scoreBlue<=scoreRed?"blue":"red");
@@ -3227,7 +3240,40 @@ function awardFreeKick(fouledPlayer, offender){
   const spotX=clamp(fouledPlayer.x,COURT.x+48,COURT.x+COURT.w-48);
   const spotY=clamp(fouledPlayer.y,COURT.y+42,COURT.y+COURT.h-42);
 
-  // Stop everyone briefly and clear trick/slide ownership states.
+  // Freeze play immediately.
+  for(const p of [...teams.blue,...teams.red]){
+    p.vx=p.vy=0;
+    p.slide=0;
+    p.shoulder=0;
+    p.stagger=0;
+  }
+
+  ball.owner=null;
+  ball.vx=ball.vy=ball.vz=0;
+  ball.shot=false;
+  ball.passTarget=null;
+  ball.passFrom=null;
+
+  clearSkillIntent();
+  clearDefenseSlide();
+  input.trickChainUntil=0;
+  input.lastTrickType=null;
+
+  pendingFreeKick={fouledPlayer, offender, team, attack, spotX, spotY};
+  foulPause=1.15;
+
+  if(foulOverlayEl){
+    foulOverlayEl.classList.remove("hidden");
+  }
+
+  return true;
+}
+
+function resumeFreeKick(){
+  if(!pendingFreeKick) return;
+
+  const {fouledPlayer,team,attack,spotX,spotY}=pendingFreeKick;
+
   for(const p of [...teams.blue,...teams.red]){
     p.vx=p.vy=0;
     p.slide=0;
@@ -3261,7 +3307,7 @@ function awardFreeKick(fouledPlayer, offender){
   fouledPlayer.y=spotY;
   fouledPlayer.possessionTime=0;
 
-  // Give the taker a little space so the restart is actually playable.
+  // Give the taker space.
   for(const p of opponents(team)){
     if(p.role==="gk") continue;
     const d=dist(p,fouledPlayer);
@@ -3272,12 +3318,13 @@ function awardFreeKick(fouledPlayer, offender){
     }
   }
 
-  clearSkillIntent();
-  clearDefenseSlide();
-  input.trickChainUntil=0;
-  input.lastTrickType=null;
-  showMessage("FOUL!  FREE KICK",.85);
-  return true;
+  pendingFreeKick=null;
+
+  if(foulOverlayEl){
+    foulOverlayEl.classList.add("hidden");
+  }
+
+  showMessage("FREE KICK",.45);
 }
 
 function slideFoulCheck(actor, victim, kind){
