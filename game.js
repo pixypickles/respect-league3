@@ -1768,6 +1768,88 @@ function drawCourt() {
 }
 
 
+
+const GK_PALETTE = [
+  {name:"red",    main:"#ef4444", dark:"#991b1b"},
+  {name:"yellow", main:"#facc15", dark:"#a16207"},
+  {name:"green",  main:"#22c55e", dark:"#166534"},
+  {name:"blue",   main:"#3b82f6", dark:"#1d4ed8"}
+];
+
+function colorDistanceHex(a,b){
+  const pa=parseInt(a.slice(1),16), pb=parseInt(b.slice(1),16);
+  const ar=(pa>>16)&255, ag=(pa>>8)&255, ab=pa&255;
+  const br=(pb>>16)&255, bg=(pb>>8)&255, bb=pb&255;
+  return Math.hypot(ar-br,ag-bg,ab-bb);
+}
+
+function gkKitForTeam(team){
+  const own=sideTeam(team);
+  const other=sideTeam(team==="blue"?"red":"blue");
+  const ownColors=[own.primary,own.secondary].filter(Boolean);
+  const otherColors=[other.primary,other.secondary].filter(Boolean);
+
+  let best=null,bestScore=-1;
+  for(const c of GK_PALETTE){
+    let score=9999;
+    for(const x of [...ownColors,...otherColors]){
+      score=Math.min(score,colorDistanceHex(c.main,x));
+    }
+    if(score>bestScore){
+      bestScore=score;
+      best=c;
+    }
+  }
+
+  // Ensure both keepers don't end up with the same color.
+  if(team==="red"){
+    const blueChoice=gkKitForTeam._blueChoice;
+    if(blueChoice && best.name===blueChoice.name){
+      best=GK_PALETTE
+        .filter(c=>c.name!==blueChoice.name)
+        .sort((a,b)=>{
+          const as=Math.min(...[...ownColors,...otherColors].map(x=>colorDistanceHex(a.main,x)));
+          const bs=Math.min(...[...ownColors,...otherColors].map(x=>colorDistanceHex(b.main,x)));
+          return bs-as;
+        })[0];
+    }
+  }else{
+    gkKitForTeam._blueChoice=best;
+  }
+
+  return best || GK_PALETTE[0];
+}
+
+function drawGKKitTorso(p){
+  const gk=gkKitForTeam(p.team);
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(-13,-13,27,35,8);
+  ctx.clip();
+
+  ctx.fillStyle=gk.main;
+  ctx.fillRect(-14,-14,30,38);
+
+  // simple darker central panel so it clearly reads as goalkeeper kit
+  ctx.fillStyle=gk.dark;
+  ctx.globalAlpha=.35;
+  ctx.fillRect(-5,-14,10,38);
+  ctx.globalAlpha=1;
+
+  ctx.restore();
+}
+
+function drawGKSleeves(p){
+  const gk=gkKitForTeam(p.team);
+  ctx.strokeStyle=gk.main;
+  ctx.lineWidth=10;
+  ctx.lineCap="round";
+  ctx.beginPath();
+  ctx.moveTo(-10,-7); ctx.lineTo(-17,-1);
+  ctx.moveTo(11,-7); ctx.lineTo(18,-1);
+  ctx.stroke();
+}
+
 function drawKitSleeves(p){
   const kit=sideTeam(p.team);
   const sleeve=kit.sleeve || kit.primary;
@@ -1853,7 +1935,8 @@ function drawPlayer(p) {
     ctx.arc(0,-18,9,0,Math.PI*2);
     ctx.fill();
 
-    drawSlideKit(p);
+    ctx.fillStyle=gkKitForTeam(p.team).main;
+    ctx.fillRect(-20,-8,40,16);
 
     ctx.strokeStyle=DARK;
     ctx.lineWidth=6;
@@ -1879,9 +1962,9 @@ function drawPlayer(p) {
     ctx.moveTo(5,10);ctx.lineTo(14,28);
     ctx.stroke();
 
-    drawKitTorso(p);
+    if(p.role==='gk') drawGKKitTorso(p); else drawKitTorso(p);
 
-    drawKitSleeves(p);
+    if(p.role==='gk') drawGKSleeves(p); else drawKitSleeves(p);
     ctx.strokeStyle=SKIN;ctx.lineWidth=6;
     ctx.beginPath();
     ctx.moveTo(-17,-1);ctx.lineTo(-23,2);
@@ -1923,10 +2006,10 @@ function drawPlayer(p) {
   ctx.stroke();
 
   // body
-  drawKitTorso(p);
+  if(p.role==='gk') drawGKKitTorso(p); else drawKitTorso(p);
 
   // short sleeves + forearms
-  drawKitSleeves(p);
+  if(p.role==='gk') drawGKSleeves(p); else drawKitSleeves(p);
   ctx.strokeStyle=SKIN;ctx.lineWidth=6;
   ctx.beginPath();
   ctx.moveTo(-17,-1);ctx.lineTo(-19,8+swing*.35);
