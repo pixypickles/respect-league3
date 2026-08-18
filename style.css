@@ -117,7 +117,7 @@ body {
   right: max(4px, env(safe-area-inset-right));
   top: 15%;
   bottom: auto;
-  width: min(16vw, 190px);
+  width: min(19vw, 220px);
   height: 70%;
 }
 
@@ -145,10 +145,10 @@ body {
   box-shadow: 0 2px 0 rgba(0,0,0,.24), inset 0 3px 9px rgba(0,0,0,.18);
 }
 
-.pass  { left: 4%; top: 36%; background: rgba(59,130,246,.72); }
-.trap  { right: 4%; top: 10%; background: rgba(34,197,94,.72); }
-.shoot { right: 4%; top: 48%; background: rgba(239,68,68,.72); }
-.dash  { right: 4%; bottom: 4%; background: rgba(245,158,11,.72); }
+.pass  { left: 50%; top: 18%; background: rgba(59,130,246,.72); }
+.trap  { left: 2%; top: 18%; background: rgba(34,197,94,.78); }
+.shoot { left: 50%; top: 55%; background: rgba(239,68,68,.78); }
+.dash  { left: 2%; top: 55%; background: rgba(245,158,11,.82); }
 
 #message {
   position: absolute;
@@ -176,33 +176,13 @@ body {
 }
 
 /* v18: separate SHOT and DASH without touching game logic */
-#buttons .trap {
-  right: 2%;
-  left: auto;
-  top: 0%;
-  bottom: auto;
-}
+#buttons .trap  { left: 2%; top: 18%; background: rgba(34,197,94,.78); }
 
-#buttons .pass {
-  left: 0%;
-  right: auto;
-  top: 34%;
-  bottom: auto;
-}
+#buttons .pass  { left: 50%; top: 18%; background: rgba(59,130,246,.72); }
 
-#buttons .shoot {
-  right: 0%;
-  left: auto;
-  top: 42%;
-  bottom: auto;
-}
+#buttons .shoot { left: 50%; top: 55%; background: rgba(239,68,68,.78); }
 
-#buttons .dash {
-  right: 0%;
-  left: auto;
-  top: auto;
-  bottom: -5%;
-}
+#buttons .dash  { left: 2%; top: 55%; background: rgba(245,158,11,.82); }
 
 
 /* ===== v22 Team / Mode UI ===== */
@@ -539,41 +519,13 @@ body {
 }
 
 /* TRAP on top, PASS/SHOT side-by-side, DASH below */
-#buttons .trap {
-  width: min(9.5vw, 104px);
-  height: min(9.5vw, 104px);
-  right: 10%;
-  top: 0%;
-  left: auto;
-  bottom: auto;
-}
+#buttons .trap  { left: 2%; top: 18%; background: rgba(34,197,94,.78); }
 
-#buttons .pass {
-  width: min(9.2vw, 100px);
-  height: min(9.2vw, 100px);
-  left: 0%;
-  top: 34%;
-  right: auto;
-  bottom: auto;
-}
+#buttons .pass  { left: 50%; top: 18%; background: rgba(59,130,246,.72); }
 
-#buttons .shoot {
-  width: min(9.2vw, 100px);
-  height: min(9.2vw, 100px);
-  right: 0%;
-  top: 34%;
-  left: auto;
-  bottom: auto;
-}
+#buttons .shoot { left: 50%; top: 55%; background: rgba(239,68,68,.78); }
 
-#buttons .dash {
-  width: min(9.4vw, 102px);
-  height: min(9.4vw, 102px);
-  right: 10%;
-  bottom: 0%;
-  left: auto;
-  top: auto;
-}
+#buttons .dash  { left: 2%; top: 55%; background: rgba(245,158,11,.82); }
 
 @media (max-height: 520px) {
   #buttons {
@@ -584,40 +536,23 @@ body {
   #buttons .trap,
   #buttons .pass,
   #buttons .shoot,
-  #buttons .dash {
-    width: min(8.7vw, 92px);
-    height: min(8.7vw, 92px);
-  }
+  #buttons .dash  { left: 2%; top: 55%; background: rgba(245,158,11,.82); }
 
-  #buttons .trap { top: 1%; }
-  #buttons .pass { top: 35%; }
-  #buttons .shoot { top: 35%; }
-  #buttons .dash { bottom: 1%; }
+  #buttons .trap  { left: 2%; top: 18%; background: rgba(34,197,94,.78); }
+  #buttons .pass  { left: 50%; top: 18%; background: rgba(59,130,246,.72); }
+  #buttons .shoot { left: 50%; top: 55%; background: rgba(239,68,68,.78); }
+  #buttons .dash  { left: 2%; top: 55%; background: rgba(245,158,11,.82); }
 }
 
 
 /* ===== v55 right controls =====
    PASS and TRAP positions swapped.
    PASS is nudged farther right. */
-#buttons .pass {
-  width: min(9.5vw, 104px);
-  height: min(9.5vw, 104px);
-  right: 2%;
-  top: 0%;
-  left: auto;
-  bottom: auto;
-}
+#buttons .pass  { left: 50%; top: 18%; background: rgba(59,130,246,.72); }
 
-#buttons .trap {
-  width: min(9.2vw, 100px);
-  height: min(9.2vw, 100px);
-  left: 0%;
-  top: 34%;
-  right: auto;
-  bottom: auto;
-}
+#buttons .trap  { left: 2%; top: 18%; background: rgba(34,197,94,.78); }
 
 @media (max-height: 520px) {
-  #buttons .pass { top: 1%; right: 2%; }
-  #buttons .trap { top: 35%; left: 0%; }
+  #buttons .pass  { left: 50%; top: 18%; background: rgba(59,130,246,.72); }
+  #buttons .trap  { left: 2%; top: 18%; background: rgba(34,197,94,.78); }
 }
