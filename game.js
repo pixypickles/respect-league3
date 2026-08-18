@@ -1,4 +1,4 @@
-const GAME_VERSION="v68";
+const GAME_VERSION="v69";
 (() => {
 "use strict";
 
@@ -669,30 +669,40 @@ function setupPracticePlayers(type){
   const b=teams.blue, r=teams.red;
   const c=controlled();
 
-  // Put everyone out of active play first.
+  // Disable every player first.
   for(const p of [...b,...r]){
+    p.practiceActive=false;
     p.vx=p.vy=0;
-    p.x=-500;
-    p.y=-500;
+    p.slide=0;
+    p.shoulder=0;
+    p.stagger=0;
+    p.gkFall=0;
+    p.x=-1000;
+    p.y=-1000;
   }
 
+  // Controlled player is always active.
+  c.practiceActive=true;
   Object.assign(c,{x:430,y:360,vx:0,vy:0});
   c.dirX=1;c.dirY=0;
 
   practicePartner=null;
 
   if(type==="partner"){
-    // Player + one teammate only. No opponents.
     practicePartner=b.find(p=>!p.controlled && p.role!=="gk");
     if(practicePartner){
+      practicePartner.practiceActive=true;
       Object.assign(practicePartner,{x:650,y:360,vx:0,vy:0});
+      practicePartner.dirX=-1;
+      practicePartner.dirY=0;
     }
   }else{
-    // Solo tutorial: player + one enemy only.
     const enemy=r.find(p=>p.role!=="gk");
     if(enemy){
+      enemy.practiceActive=true;
       Object.assign(enemy,{x:700,y:360,vx:0,vy:0});
-      enemy.dirX=-1; enemy.dirY=0;
+      enemy.dirX=-1;
+      enemy.dirY=0;
     }
   }
 
@@ -702,7 +712,9 @@ function setupPracticePlayers(type){
   ball.z=0;
   ball.vx=ball.vy=ball.vz=0;
   ball.passTarget=null;
+  ball.passFrom=null;
   ball.shot=false;
+  ball.touchGrace=.12;
 }
 
 
@@ -862,6 +874,10 @@ const ball = {
 };
 
 function resetKickoff(team="blue") {
+  if(gamePhase==="practice"){
+    resetPracticeAfterGoal();
+    return;
+  }
   for (const p of [...teams.blue,...teams.red]) {
     p.vx=p.vy=0; p.slide=0; p.kickAnim=0; p.cooldown=.35; p.receiveIntent=false;
   }
@@ -896,8 +912,14 @@ function showMessage(text, sec=.7) {
   messageTimer=sec;
 }
 
-function teamPlayers(team){ return team==="blue"?teams.blue:teams.red; }
-function opponents(team){ return team==="blue"?teams.red:teams.blue; }
+function teamPlayers(team){
+  const arr=team==="blue"?teams.blue:teams.red;
+  return gamePhase==="practice" ? arr.filter(p=>p.practiceActive) : arr;
+}
+function opponents(team){
+  const arr=team==="blue"?teams.red:teams.blue;
+  return gamePhase==="practice" ? arr.filter(p=>p.practiceActive) : arr;
+}
 
 function closestOpponent(p) {
   let best=null, bd=Infinity;
@@ -1220,6 +1242,7 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
+  if(gamePhase==="practice" && !p.practiceActive) return false;
   if(p.role==="gk" && p.gkFall>0) return false;
   // v53: TRAP cannot stop a nutmeg ball.
   if(nutmegProtectedAgainst(p)) return false;
@@ -1781,6 +1804,7 @@ function aiWithBall(p,dt) {
 }
 
 function updateAI(p,dt) {
+  if(gamePhase==="practice" && !p.practiceActive) return;
   if(gamePhase==="practice"){
     if(p.role==="gk") return;
     if(p.x<-100 || p.y<-100) return;
@@ -1915,6 +1939,7 @@ function fallenGKParry(p){
 }
 
 function updateGK(p,dt) {
+  if(gamePhase==="practice" && !p.practiceActive) return;
   if(p.gkFall>0){
     if(!fallenGKCanTouchBall(p)) return;
     if(!ball.owner && dist(p,ball)<58 && ball.z<42){
@@ -2386,6 +2411,7 @@ function drawSlideKit(p){
 }
 
 function drawPlayer(p) {
+  if(gamePhase==="practice" && !p.practiceActive) return;
 
   if(p.role==="gk" && p.gkFall>0){
     ctx.save();
@@ -2521,7 +2547,7 @@ function draw() {
   drawCourt();
 
   // sort by y for a tiny bit of depth
-  const all=[...teams.blue,...teams.red].sort((a,b)=>a.y-b.y);
+  const all=[...teams.blue,...teams.red].filter(p=>gamePhase!=="practice" || p.practiceActive).sort((a,b)=>a.y-b.y);
   for(const p of all) drawPlayer(p);
   drawBall();
 
