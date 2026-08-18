@@ -845,6 +845,7 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
+  if(p.role==="gk" && p.gkFall>0) return false;
   // v53: TRAP cannot stop a nutmeg ball.
   if(nutmegProtectedAgainst(p)) return false;
   // Protected chipped dash ball: only a perfectly close manual TRAP can cut it.
@@ -1464,7 +1465,48 @@ function updateAI(p,dt) {
   }
 }
 
+
+function fallenGKCanTouchBall(p){
+  if(!p || p.role!=="gk" || p.gkFall<=0) return true;
+
+  if(p.controlled){
+    return !!(
+      input.trap &&
+      input.actionPriorityTimer>.06 &&
+      dist(p,ball)<58 &&
+      ball.z<42
+    );
+  }
+
+  if(dist(p,ball)<42 && ball.z<36 && Math.random()<0.035){
+    return true;
+  }
+
+  return false;
+}
+
+function fallenGKParry(p){
+  const n=norm(ball.x-p.x,ball.y-p.y);
+  const speed=Math.max(160,Math.hypot(ball.vx,ball.vy)*.55);
+  ball.owner=null;
+  ball.vx=n.x*speed;
+  ball.vy=n.y*speed;
+  ball.vz=Math.max(ball.vz,70);
+  ball.shot=false;
+  ball.lastTouch=p;
+  ball.touchGrace=.12;
+  showMessage("DESPERATE SAVE!",.34);
+}
+
 function updateGK(p,dt) {
+  if(p.gkFall>0){
+    if(!fallenGKCanTouchBall(p)) return;
+    if(!ball.owner && dist(p,ball)<58 && ball.z<42){
+      fallenGKParry(p);
+    }
+    return;
+  }
+
   if(gamePhase==="practice" && p.team==="blue") return;
   const ownLeft=p.team==="blue";
   const gx=ownLeft?COURT.x+30:COURT.x+COURT.w-30;
