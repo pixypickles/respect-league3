@@ -1,4 +1,4 @@
-const GAME_VERSION="v77";
+const GAME_VERSION="v78";
 (() => {
 "use strict";
 
@@ -2805,22 +2805,27 @@ function tryDoubleTouch(attacker){
     .sort((a,b)=>a.d-b.d);
 
   const hit=enemies[0];
-  if(!hit || hit.d>92) return false;
-  const defender=hit.p;
+  const defender=(hit && hit.d<=112) ? hit.p : null;
 
   let fx=input.sx, fy=input.sy;
   if(Math.hypot(fx,fy)<.18){ fx=attacker.dirX; fy=attacker.dirY; }
   const face=norm(fx,fy);
 
   // Choose the side opposite the defender's lateral position.
-  const to=norm(defender.x-attacker.x,defender.y-attacker.y);
-  const cross=face.x*to.y-face.y*to.x;
-  const sideSign=cross>=0 ? -1 : 1;
+  // If no defender is close enough, use stick-side / alternating side so the move still comes out.
+  let sideSign=1;
+  if(defender){
+    const to=norm(defender.x-attacker.x,defender.y-attacker.y);
+    const cross=face.x*to.y-face.y*to.x;
+    sideSign=cross>=0 ? -1 : 1;
+  }else{
+    sideSign=(attacker.y<H/2)?1:-1;
+  }
   const side={x:-face.y*sideSign,y:face.x*sideSign};
 
   // Half-step sideways + forward burst.
-  attacker.x=clamp(attacker.x+side.x*20+face.x*10,COURT.x+25,COURT.x+COURT.w-25);
-  attacker.y=clamp(attacker.y+side.y*20+face.y*10,COURT.y+25,COURT.y+COURT.h-25);
+  attacker.x=clamp(attacker.x+side.x*26+face.x*14,COURT.x+25,COURT.x+COURT.w-25);
+  attacker.y=clamp(attacker.y+side.y*26+face.y*14,COURT.y+25,COURT.y+COURT.h-25);
   attacker.vx=face.x*285+side.x*180;
   attacker.vy=face.y*285+side.y*180;
   attacker.dirX=face.x;
@@ -2829,7 +2834,7 @@ function tryDoubleTouch(attacker){
 
   ball.owner=attacker;
   ball.lastTouch=attacker;
-  ball.trickProtectTimer=.34;
+  ball.trickProtectTimer=.42;
   ball.trickProtectTeam=attacker.team;
   ball.trickAttacker=attacker;
   ball.trickTarget=defender;
@@ -2857,21 +2862,24 @@ function tryNutmeg(attacker){
   const hasBall=ball.owner===attacker;
   if(!hasBall) return false;
 
+  let fx=input.sx, fy=input.sy;
+  if(Math.hypot(fx,fy)<.18){ fx=attacker.dirX; fy=attacker.dirY; }
+  const face=norm(fx,fy);
+
   const enemies=opponents(attacker.team)
     .filter(e=>e.role!=="gk" && e.stagger<=0)
-    .map(e=>({p:e,d:dist(attacker,e)}))
-    .sort((a,b)=>a.d-b.d);
+    .map(e=>{
+      const d=dist(attacker,e);
+      const to=norm(e.x-attacker.x,e.y-attacker.y);
+      const align=face.x*to.x+face.y*to.y;
+      return {p:e,d,align};
+    })
+    .filter(o=>o.d<=108 && o.align>-.32)
+    .sort((a,b)=>(b.align-a.align)*42 + (a.d-b.d));
 
   const hit=enemies[0];
-  if(!hit || hit.d>90) return false;
+  if(!hit) return false;
   const defender=hit.p;
-
-  const face=norm(attacker.dirX,attacker.dirY);
-  const to=norm(defender.x-attacker.x,defender.y-attacker.y);
-  const align=face.x*to.x+face.y*to.y;
-
-  // Defender must be roughly in front.
-  if(align<-.08) return false;
 
   // Only defense: defender is actively back-dashing away from attacker.
   if(defenderBackDashGuarding(defender,attacker)){
@@ -2888,7 +2896,7 @@ function tryNutmeg(attacker){
   ball.passTarget=null;
   ball.lastTouch=attacker;
   ball.passFrom=attacker;
-  ball.nutmegTimer=.46;
+  ball.nutmegTimer=.52;
   ball.nutmegTeam=attacker.team;
   ball.nutmegTarget=defender;
 
@@ -2905,7 +2913,7 @@ function tryNutmeg(attacker){
   ball.protectedTeam=attacker.team;
 
   // Attacker follows with a fast burst.
-  input.dashTimer=.42;
+  input.dashTimer=.46;
   input.dashCooldown=.48;
   attacker.vx=face.x*410;
   attacker.vy=face.y*410;
@@ -2968,19 +2976,18 @@ trapBtn.addEventListener("pointerdown",e=>{
   const c=controlled();
   const now=performance.now();
 
-  // TRAP -> DASH -> TRAP : double touch.
-  if(input.comboStage===2 && now<input.comboUntil && ball.owner===c){
+  // TRAP -> TRAP -> DASH : prepare double touch.
+  if(ball.owner===c){
+    if(input.comboStage===1 && now<input.comboUntil){
+      input.comboStage=2;
+      input.comboUntil=now+460;
+    }else{
+      input.comboStage=1;
+      input.comboUntil=now+460;
+    }
+  }else{
     input.comboStage=0;
     input.comboUntil=0;
-    if(tryDoubleTouch(c)) return;
-  }
-
-  // Start the double-touch sequence only while we have the ball.
-  if(ball.owner===c){
-    input.comboStage=1;
-    input.comboUntil=now+420;
-  }else if(input.comboStage!==2){
-    input.comboStage=0;
   }
 
   // On defense, TRAP is a short-range foot steal.
@@ -3005,15 +3012,21 @@ dashBtn.addEventListener("pointerdown",e=>{
   e.preventDefault();
   const c=controlled();
   const now=performance.now();
-  const isDoubleDash=(now-input.lastDashTapAt)<=300;
+  const isDoubleDash=(now-input.lastDashTapAt)<=420;
   input.lastDashTapAt=now;
 
-  // TRAP -> DASH -> TRAP combo middle input.
-  if(input.comboStage===1 && now<input.comboUntil && ball.owner===c){
-    input.comboStage=2;
-    input.comboUntil=now+360;
-  }else if(input.comboStage!==2 && now>=input.comboUntil){
+  // TRAP -> TRAP -> DASH : final input triggers double touch.
+  if(input.comboStage===2 && now<input.comboUntil && ball.owner===c){
     input.comboStage=0;
+    input.comboUntil=0;
+    if(tryDoubleTouch(c)){
+      dashBtn.classList.add("active");
+      setTimeout(()=>dashBtn.classList.remove("active"),150);
+      return;
+    }
+  }else if(now>=input.comboUntil){
+    input.comboStage=0;
+    input.comboUntil=0;
   }
 
   // Keep one-two return request behavior after a pass.
