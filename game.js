@@ -1,4 +1,4 @@
-const GAME_VERSION="v82";
+const GAME_VERSION="v84";
 (() => {
 "use strict";
 
@@ -365,6 +365,7 @@ function prepareMatch(){
   input.trapPressBuffer=0;
   input.trickChainUntil=0;
   input.lastTrickType=null;
+  input.defenseSlideReadyUntil=0;
   clearSkillIntent();
   input.shootDown=false;
   input.shootBallLock=false;
@@ -813,6 +814,7 @@ const input = {
   comboUntil: 0,
   trickChainUntil: 0,
   lastTrickType: null,
+  defenseSlideReadyUntil: 0,
   skillIntentUntil: 0,
   skillIntentAttacker: null
 };
@@ -3170,6 +3172,287 @@ function nutmegProtectedAgainst(p){
          p.team!==ball.nutmegTeam;
 }
 
+
+
+function awardFreeKick(fouledPlayer, offender){
+  if(!fouledPlayer || !offender) return false;
+
+  const team=fouledPlayer.team;
+  const attack=team==="blue"?1:-1;
+  const spotX=clamp(fouledPlayer.x,COURT.x+48,COURT.x+COURT.w-48);
+  const spotY=clamp(fouledPlayer.y,COURT.y+42,COURT.y+COURT.h-42);
+
+  // Stop everyone briefly and clear trick/slide ownership states.
+  for(const p of [...teams.blue,...teams.red]){
+    p.vx=p.vy=0;
+    p.slide=0;
+    p.shoulder=0;
+    p.stagger=0;
+    p.cooldown=Math.max(p.cooldown,.28);
+  }
+
+  ball.owner=fouledPlayer;
+  ball.x=spotX+attack*18;
+  ball.y=spotY;
+  ball.z=0;
+  ball.vx=ball.vy=ball.vz=0;
+  ball.shot=false;
+  ball.passTarget=null;
+  ball.passFrom=null;
+  ball.lastTouch=fouledPlayer;
+  ball.touchGrace=.35;
+  ball.protectedTeam=team;
+  ball.nutmegTimer=0;
+  ball.nutmegTeam=null;
+  ball.nutmegTarget=null;
+  ball.trickProtectTimer=0;
+  ball.trickProtectTeam=null;
+  ball.trickAttacker=null;
+  ball.trickTarget=null;
+  ball.stealProtectTimer=.35;
+  ball.stealProtectTeam=team;
+
+  fouledPlayer.x=spotX;
+  fouledPlayer.y=spotY;
+  fouledPlayer.possessionTime=0;
+
+  // Give the taker a little space so the restart is actually playable.
+  for(const p of opponents(team)){
+    if(p.role==="gk") continue;
+    const d=dist(p,fouledPlayer);
+    if(d<105){
+      const n=norm(p.x-fouledPlayer.x,p.y-fouledPlayer.y);
+      p.x=clamp(fouledPlayer.x+n.x*108,COURT.x+24,COURT.x+COURT.w-24);
+      p.y=clamp(fouledPlayer.y+n.y*108,COURT.y+24,COURT.y+COURT.h-24);
+    }
+  }
+
+  clearSkillIntent();
+  clearDefenseSlide();
+  input.trickChainUntil=0;
+  input.lastTrickType=null;
+  showMessage("FOUL!  FREE KICK",.85);
+  return true;
+}
+
+function slideFoulCheck(actor, victim, kind){
+  if(!actor || !victim || actor.team===victim.team) return false;
+
+  const technique =
+    (ball.nutmegTimer>0 && ball.passFrom===victim) ||
+    (ball.trickProtectTimer>0 && ball.trickAttacker===victim);
+
+  // Sliding into a player is risky. It is especially risky while the
+  // attacker is executing nutmeg/double-touch.
+  let chance = kind==="trap" ? .18 : .25;
+  if(kind==="shot") chance=.34;
+  if(technique) chance = kind==="trap" ? .58 : .68;
+
+  if(Math.random()<chance){
+    awardFreeKick(victim,actor);
+    return true;
+  }
+  return false;
+}
+
+function slideVictimNear(actor, maxDist){
+  return opponents(actor.team)
+    .filter(p=>p.role!=="gk")
+    .map(p=>({p,d:dist(actor,p)}))
+    .filter(o=>o.d<=maxDist)
+    .sort((a,b)=>a.d-b.d)[0]?.p || null;
+}
+
+function defenseSlideReady(){
+  return performance.now()<input.defenseSlideReadyUntil;
+}
+
+function armDefenseSlide(){
+  input.defenseSlideReadyUntil=performance.now()+520;
+}
+
+function clearDefenseSlide(){
+  input.defenseSlideReadyUntil=0;
+}
+
+function startSlideMotion(p, reach="long"){
+  if(!p || p.role==="gk" || p.stagger>0) return false;
+
+  let dx=input.sx, dy=input.sy;
+  if(Math.hypot(dx,dy)<.18){ dx=p.dirX; dy=p.dirY; }
+  const n=norm(dx,dy);
+
+  p.dirX=n.x; p.dirY=n.y;
+  p.slide=reach==="short" ? .24 : .32;
+  const speed=reach==="short" ? 335 : 405;
+  p.vx=n.x*speed;
+  p.vy=n.y*speed;
+  p.cooldown=reach==="short" ? .32 : .42;
+  return true;
+}
+
+function neutralLooseFromContact(actor, power=250, lift=28){
+  const n=norm(actor.dirX,actor.dirY);
+  ball.owner=null;
+  ball.passTarget=null;
+  ball.passFrom=null;
+  ball.lastTouch=actor;
+  ball.vx=n.x*power;
+  ball.vy=n.y*power;
+  ball.vz=lift;
+  ball.touchGrace=0;
+  ball.protectedTeam=null;
+  ball.cpuPassProtect=0;
+  ball.stealProtectTimer=0;
+  ball.stealProtectTeam=null;
+}
+
+function slidingPassAction(actor){
+  if(!startSlideMotion(actor,"long")) return false;
+
+  const slideVictim=slideVictimNear(actor,82);
+  if(slideVictim && slideFoulCheck(actor,slideVictim,"pass")) return true;
+
+  // Against dribble tricks: can touch and knock it neutral.
+  if((ball.nutmegTimer>0 || ball.trickProtectTimer>0) &&
+     disruptTechniqueToLoose(actor,"poke")){
+    showMessage("SLIDE POKE!",.30);
+    return true;
+  }
+
+  // Ball carrier: long-range poke out to neutral ball.
+  if(ball.owner && ball.owner.team!==actor.team && dist(actor,ball.owner)<82){
+    const victim=ball.owner;
+    const n=norm(victim.x-actor.x,victim.y-actor.y);
+    ball.owner=null;
+    ball.x=victim.x+n.x*18;
+    ball.y=victim.y+n.y*18;
+    neutralLooseFromContact(actor,315,34);
+    showMessage("SLIDE POKE!",.30);
+    return true;
+  }
+
+  // Loose ball: sliding pass to teammate.
+  if(!ball.owner && dist(actor,ball)<76 && ball.z<28){
+    const target=safeCpuPassTarget(actor) || bestPassTarget(actor);
+    if(target){
+      const tx=target.x+target.dirX*36;
+      const ty=target.y+target.dirY*36;
+      const n=norm(tx-ball.x,ty-ball.y);
+      ball.owner=null;
+      ball.passFrom=actor;
+      ball.passTarget=target;
+      ball.lastTouch=actor;
+      ball.vx=n.x*390;
+      ball.vy=n.y*390;
+      ball.vz=18;
+      ball.touchGrace=.08;
+      ball.protectedTeam=actor.team;
+      showMessage("SLIDE PASS!",.30);
+      return true;
+    }
+  }
+  return false;
+}
+
+function slidingTrapAction(actor){
+  if(!startSlideMotion(actor,"short")) return false;
+
+  const slideVictim=slideVictimNear(actor,56);
+  if(slideVictim && slideFoulCheck(actor,slideVictim,"trap")) return true;
+
+  // Against dribble tricks: can touch, but only neutralizes.
+  if((ball.nutmegTimer>0 || ball.trickProtectTimer>0) &&
+     disruptTechniqueToLoose(actor,"trap")){
+    showMessage("SLIDE TOUCH!",.30);
+    return true;
+  }
+
+  // Shorter range: steal directly from ball carrier.
+  if(ball.owner && ball.owner.team!==actor.team && dist(actor,ball.owner)<54){
+    const victim=ball.owner;
+    ball.owner=actor;
+    ball.passTarget=null;
+    ball.passFrom=null;
+    ball.vx=ball.vy=ball.vz=0;
+    ball.z=0;
+    ball.lastTouch=actor;
+    ball.stealProtectTimer=.38;
+    ball.stealProtectTeam=actor.team;
+    actor.possessionTime=0;
+    showMessage("SLIDE STEAL!",.30);
+    return true;
+  }
+
+  // Loose ball: slide in and keep it.
+  if(!ball.owner && dist(actor,ball)<56 && ball.z<24){
+    ball.owner=actor;
+    ball.passTarget=null;
+    ball.passFrom=null;
+    ball.vx=ball.vy=ball.vz=0;
+    ball.z=0;
+    ball.lastTouch=actor;
+    ball.touchGrace=.12;
+    ball.protectedTeam=actor.team;
+    actor.possessionTime=0;
+    showMessage("SLIDE KEEP!",.30);
+    return true;
+  }
+  return false;
+}
+
+function slidingShotAction(actor){
+  if(!startSlideMotion(actor,"long")) return false;
+
+  // Sliding shot cannot hit nutmeg/double-touch, so it also cannot foul
+  // the trick attacker through that protected interaction.
+  if(ball.nutmegTimer>0 || ball.trickProtectTimer>0){
+    return false;
+  }
+
+  const slideVictim=slideVictimNear(actor,86);
+  if(slideVictim && slideFoulCheck(actor,slideVictim,"shot")) return true;
+
+  // Ball carrier: big kick-out to neutral loose ball.
+  if(ball.owner && ball.owner.team!==actor.team && dist(actor,ball.owner)<86){
+    const victim=ball.owner;
+    const n=norm(victim.x-actor.x,victim.y-actor.y);
+    ball.owner=null;
+    ball.x=victim.x+n.x*20;
+    ball.y=victim.y+n.y*20;
+    neutralLooseFromContact(actor,390,44);
+    showMessage("SLIDE CLEAR!",.30);
+    return true;
+  }
+
+  // Loose ball: sliding shot on goal.
+  if(!ball.owner && dist(actor,ball)<78 && ball.z<30){
+    const goalX=actor.team==="blue"?COURT.x+COURT.w+12:COURT.x-12;
+    const goalTop=H/2-GOAL_H/2;
+    const goalBottom=H/2+GOAL_H/2;
+    let targetY=H/2;
+    if(actor.controlled){
+      if(input.sy<-.5) targetY=goalTop+14;
+      else if(input.sy>.5) targetY=goalBottom-14;
+    }
+    const n=norm(goalX-ball.x,targetY-ball.y);
+    ball.owner=null;
+    ball.passFrom=actor;
+    ball.passTarget=null;
+    ball.lastTouch=actor;
+    ball.vx=n.x*670;
+    ball.vy=n.y*670;
+    ball.vz=24;
+    ball.shot=true;
+    ball.power=670;
+    ball.touchGrace=.10;
+    ball.protectedTeam=actor.team;
+    showMessage("SLIDE SHOT!",.30);
+    return true;
+  }
+  return false;
+}
+
 // ---------- Buttons ----------
 const passBtn=document.getElementById("passBtn");
 const trapBtn=document.getElementById("trapBtn");
@@ -3185,6 +3468,11 @@ function bindHold(btn, key) {
 let trapPointer=null;
 trapBtn.addEventListener("pointerdown",e=>{
   e.preventDefault();
+
+  if(defenseSlideReady()){
+    clearDefenseSlide();
+    if(slidingTrapAction(controlled())) return;
+  }
   trapPointer=e.pointerId;
   trapBtn.setPointerCapture(trapPointer);
   input.trap=true;
@@ -3242,6 +3530,11 @@ dashBtn.addEventListener("pointerdown",e=>{
   const c=controlled();
   const now=performance.now();
   const isDoubleDash=(now-input.lastDashTapAt)<=(trickChainActive()?520:420);
+
+  // On defense / loose-ball play, DASH x2 arms a sliding action.
+  if(isDoubleDash && ball.owner!==c){
+    armDefenseSlide();
+  }
 
   // First DASH of a possible nutmeg gets a short preparation shield.
   if(ball.owner===c && !isDoubleDash){
@@ -3325,6 +3618,10 @@ dashBtn.addEventListener("pointerdown",e=>{
 
 passBtn.addEventListener("pointerdown",e=>{
   e.preventDefault();
+  if(defenseSlideReady()){
+    clearDefenseSlide();
+    if(slidingPassAction(controlled())) return;
+  }
   if(gamePhase==="practice") tutorialFlags.passUsed=true;
   input.actionPriorityTimer=.16;
   const c=controlled();
@@ -3362,6 +3659,12 @@ passBtn.addEventListener("pointerdown",e=>{
 passBtn.addEventListener("pointerup",()=>{});
 
 shootBtn.addEventListener("pointerdown",e=>{
+  e.preventDefault();
+  if(defenseSlideReady()){
+    clearDefenseSlide();
+    if(slidingShotAction(controlled())) return;
+  }
+
   e.preventDefault();
   const c=controlled();
   input.actionPriorityTimer=.18;
