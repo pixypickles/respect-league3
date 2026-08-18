@@ -1,4 +1,4 @@
-const GAME_VERSION="v87";
+const GAME_VERSION="v88";
 (() => {
 "use strict";
 
@@ -789,6 +789,8 @@ let elapsed = 0;
 let matchLeft = MATCH_SECONDS;
 let scoreBlue = 0, scoreRed = 0;
 let goalPause = 0;
+let foulPause=0;
+let pendingFreeKick=null;
 let messageTimer = 0;
 
 const input = {
