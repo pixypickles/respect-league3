@@ -420,6 +420,7 @@ function makePlayer(team, x,y, role="field", controlled=false) {
     shoulder:0,
     stagger:0,
     backDashGuard:0,
+    gkFall:0,
     scanTimer:0,
     headLook:0
   };
@@ -480,7 +481,9 @@ const ball = {
   stealSecurePlayer:null,
   nutmegTimer:0,
   nutmegTeam:null,
-  nutmegTarget:null
+  nutmegTarget:null,
+  stealProtectTimer:0,
+  stealProtectTeam:null
 };
 
 function resetKickoff(team="blue") {
@@ -508,6 +511,7 @@ function resetKickoff(team="blue") {
   ball.touchGrace=.18; ball.protectedTeam=starter.team;
   ball.dashProtectTimer=0; ball.dashProtectTeam=null;
   ball.nutmegTimer=0; ball.nutmegTeam=null; ball.nutmegTarget=null;
+  ball.stealProtectTimer=0; ball.stealProtectTeam=null;
   starter.possessionTime=0;
 }
 
@@ -951,10 +955,23 @@ function beginStealSecure(p,vx=0,vy=0){
   ball.vz=Math.min(ball.vz,8);
   ball.touchGrace=.06;
   ball.protectedTeam=p.team;
+  ball.stealProtectTimer=.42;
+  ball.stealProtectTeam=p.team;
+}
+
+
+function stealProtectedAgainst(p){
+  return !!(
+    p &&
+    ball.stealProtectTimer>0 &&
+    ball.stealProtectTeam &&
+    p.team!==ball.stealProtectTeam
+  );
 }
 
 function shortTrapSteal(actor) {
   if(nutmegProtectedAgainst(actor)) return false;
+  if(stealProtectedAgainst(actor)) return false;
   if(!actor || actor.role==="gk" || actor.cooldown>0 || actor.stagger>0) return false;
 
   if(nutmegProtectedAgainst(actor)){
@@ -1001,6 +1018,7 @@ function shortTrapSteal(actor) {
 
 function defensivePoke(actor) {
   if(nutmegProtectedAgainst(actor)) return false;
+  if(stealProtectedAgainst(actor)) return false;
   if(nutmegProtectedAgainst(actor)) return false;
 
   if(ball.owner && ball.owner.team!==actor.team && dist(actor,ball.owner)<58) {
@@ -1457,6 +1475,18 @@ function updateGK(p,dt) {
   p.y=lerp(p.y,targetY,dt*3.5);
 
   const danger = !ball.owner && ball.shot && ball.z<60 && dist(p,ball)<62;
+
+  // v56: slow loose balls / soft passes in the keeper's body line must never be ignored.
+  const ballSpeed=Math.hypot(ball.vx,ball.vy);
+  const slowBall=!ball.owner && ball.z<24 && ballSpeed<220 && dist(p,ball)<54;
+  if(slowBall){
+    ball.owner=p;
+    ball.vx=ball.vy=ball.vz=0;
+    ball.z=0;
+    ball.shot=false;
+    ball.lastTouch=p;
+    return;
+  }
   if(danger) {
     // Timed TRAP remains the strongest keeper action.
     if(p.team==="blue" && input.trap && dist(p,ball)<54) {
@@ -1481,6 +1511,7 @@ function updateGK(p,dt) {
       ball.vz=75;
       ball.shot=false;
       ball.lastTouch=p;
+      if(ball.power>590) p.gkFall=.42;
       return;
     }
 
@@ -1499,6 +1530,7 @@ function updateGK(p,dt) {
       ball.vz=72;
       ball.shot=false;
       ball.lastTouch=p;
+      if(ball.power>590) p.gkFall=.42;
     }
   }
 
@@ -1516,6 +1548,8 @@ function updatePhysics(dt) {
   input.actionPriorityTimer=Math.max(0,input.actionPriorityTimer-dt);
   input.postKickNoAutoTrap=Math.max(0,input.postKickNoAutoTrap-dt);
   ball.touchGrace=Math.max(0,ball.touchGrace-dt);
+  ball.stealProtectTimer=Math.max(0,ball.stealProtectTimer-dt);
+  if(ball.stealProtectTimer<=0) ball.stealProtectTeam=null;
   ball.nutmegTimer=Math.max(0,ball.nutmegTimer-dt);
   if(ball.nutmegTimer<=0){
     ball.nutmegTeam=null;
@@ -1526,6 +1560,8 @@ function updatePhysics(dt) {
     const sp=ball.stealSecurePlayer;
     if(dist(sp,ball)<46 && ball.z<18){
       ball.owner=sp;
+      ball.stealProtectTimer=.42;
+      ball.stealProtectTeam=sp.team;
       ball.vx=ball.vy=ball.vz=0;
       ball.z=0;
       ball.lastTouch=sp;
@@ -1546,6 +1582,7 @@ function updatePhysics(dt) {
     p.shoulder=Math.max(0,p.shoulder-dt);
     p.stagger=Math.max(0,p.stagger-dt);
     p.backDashGuard=Math.max(0,p.backDashGuard-dt);
+    p.gkFall=Math.max(0,p.gkFall-dt);
     p.kickAnim=Math.max(0,p.kickAnim-dt);
     p.slide=Math.max(0,p.slide-dt);
 
@@ -1777,6 +1814,32 @@ function drawSlideKit(p){
 }
 
 function drawPlayer(p) {
+
+  if(p.role==="gk" && p.gkFall>0){
+    ctx.save();
+    ctx.translate(p.x,p.y);
+    ctx.rotate((p.team==="blue"?1:-1)*0.95);
+
+    ctx.fillStyle="#f3c9ad";
+    ctx.beginPath();
+    ctx.arc(0,-18,9,0,Math.PI*2);
+    ctx.fill();
+
+    drawSlideKit(p);
+
+    ctx.strokeStyle=DARK;
+    ctx.lineWidth=6;
+    ctx.lineCap="round";
+    ctx.beginPath();
+    ctx.moveTo(-15,8); ctx.lineTo(-28,14);
+    ctx.moveTo(15,8); ctx.lineTo(28,14);
+    ctx.stroke();
+
+    ctx.restore();
+    return;
+  }
+
+
   ctx.save();
   ctx.translate(p.x,p.y);
   // Character artwork stays upright on screen. Movement direction does not rotate the head/body.
