@@ -1,4 +1,4 @@
-const GAME_VERSION="v81";
+const GAME_VERSION="v82";
 (() => {
 "use strict";
 
@@ -117,7 +117,7 @@ function sideTeam(side){
 const TEAM_AI = {
   "blizzard":   {pass:0.90, dribble:0.18, nutmeg:0.04, midShot:0.14, hold:.62, gk:1.28, post:false},
   "salvida-a":  {pass:0.72, dribble:0.28, nutmeg:0.05, midShot:0.10, hold:.78, gk:1.00, post:true},
-  "salvida-b":  {pass:0.28, dribble:0.88, nutmeg:0.72, midShot:0.12, hold:.46, gk:1.00, post:false},
+  "salvida-b":  {pass:0.20, dribble:0.94, nutmeg:0.92, midShot:0.10, hold:.34, gk:1.00, post:false},
   "takezo":     {pass:0.58, dribble:0.58, nutmeg:0.22, midShot:0.18, hold:.60, gk:1.00, post:false},
   "manchester-p":{pass:0.42, dribble:0.38, nutmeg:0.08, midShot:0.78, hold:.54, gk:1.00, post:false},
   "fst":         {pass:0.78, dribble:0.72, nutmeg:0.34, midShot:0.42, hold:.46, gk:1.18, post:false}
@@ -178,6 +178,38 @@ function cpuTryNutmeg(p){
   p.cooldown=.18;
   return true;
 }
+
+function cpuTryDoubleTouch(p){
+  if(!p || ball.owner!==p || p.role==="gk" || p.cooldown>0) return false;
+  if(sideTeam(p.team).id!=="salvida-b") return false;
+
+  const near=closestOpponent(p);
+  if(!near.p || near.d>108 || Math.random()>.68) return false;
+
+  const face=norm(p.dirX,p.dirY);
+  const defender=near.p;
+  const to=norm(defender.x-p.x,defender.y-p.y);
+  const cross=face.x*to.y-face.y*to.x;
+  const sideSign=cross>=0 ? -1 : 1;
+  const side={x:-face.y*sideSign,y:face.x*sideSign};
+
+  p.x=clamp(p.x+side.x*18+face.x*9,COURT.x+25,COURT.x+COURT.w-25);
+  p.y=clamp(p.y+side.y*18+face.y*9,COURT.y+25,COURT.y+COURT.h-25);
+  p.vx=face.x*250+side.x*145;
+  p.vy=face.y*250+side.y*145;
+  p.cooldown=.08;
+
+  ball.owner=p;
+  ball.lastTouch=p;
+  ball.trickProtectTimer=.42;
+  ball.trickProtectTeam=p.team;
+  ball.trickAttacker=p;
+  ball.trickTarget=defender;
+  ball.touchGrace=.14;
+  ball.protectedTeam=p.team;
+  return true;
+}
+
 
 
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
@@ -1409,6 +1441,7 @@ function stealProtectedAgainst(p){
 }
 
 function shortTrapSteal(actor) {
+  if((ball.nutmegTimer>0 || ball.trickProtectTimer>0) && disruptTechniqueToLoose(actor,"trap")) return true;
   if(skillIntentProtectedAgainst(actor)) return false;
 
   if(techniqueBallReservedFor(actor)) return false;
@@ -1461,6 +1494,7 @@ function shortTrapSteal(actor) {
 }
 
 function defensivePoke(actor) {
+  if((ball.nutmegTimer>0 || ball.trickProtectTimer>0) && disruptTechniqueToLoose(actor,"poke")) return true;
   if(skillIntentProtectedAgainst(actor)) return false;
 
   if(techniqueBallReservedFor(actor)) return false;
@@ -1581,10 +1615,6 @@ function checkSlideSteal(p) {
 function offBallAction(team, type) {
   if(skillIntentActive() && input.skillIntentAttacker &&
      input.skillIntentAttacker.team!==team) return;
-
-  if(ball.trickProtectTimer>0 && ball.trickProtectTeam && ball.trickProtectTeam!==team) return;
-
-  if(ball.nutmegTimer>0 && ball.nutmegTeam && ball.nutmegTeam!==team) return;
 
   const owner=ball.owner;
   let candidates=teamPlayers(team).filter(p=>p.role!=="gk");
@@ -1813,7 +1843,10 @@ function aiWithBall(p,dt) {
   if(p.aiTimer<=0 && p.receiveLock<=0 && p.possessionTime>prof.hold) {
     p.aiTimer=rand(.58,1.05);
 
-    if(prof.nutmeg>.20 && near.d<86 && cpuTryNutmeg(p)) return;
+    if(sideTeam(p.team).id==="salvida-b" && near.d<108){
+      if(Math.random()<.56 && cpuTryDoubleTouch(p)) return;
+      if(cpuTryNutmeg(p)) return;
+    }else if(prof.nutmeg>.20 && near.d<86 && cpuTryNutmeg(p)) return;
 
     const middleRange=prof.midShot>.5 ? 390 : 260;
     const shotChance=prof.midShot>.5 ? prof.midShot : .82;
@@ -2880,6 +2913,55 @@ function openTrickChain(type, ms=520){
   input.trickChainUntil=performance.now()+ms;
 }
 
+
+function disruptTechniqueToLoose(actor, kind="poke"){
+  const activeNutmeg=ball.nutmegTimer>0 && ball.passFrom;
+  const activeDouble=ball.trickProtectTimer>0 && ball.trickAttacker;
+  const attacker=activeNutmeg ? ball.passFrom : (activeDouble ? ball.trickAttacker : null);
+
+  if(!attacker || !actor || actor.team===attacker.team) return false;
+
+  const targetPos = ball.owner ? ball.owner : ball;
+  const reach = kind==="trap" ? 34 : 58;
+  if(dist(actor,targetPos)>reach) return false;
+
+  const n=norm(attacker.x-actor.x,attacker.y-actor.y);
+  const kickDir=norm(actor.dirX,actor.dirY);
+
+  ball.owner=null;
+  ball.passTarget=null;
+  ball.passFrom=null;
+  ball.lastTouch=actor;
+  ball.x=attacker.x-n.x*10;
+  ball.y=attacker.y+12-n.y*6;
+  ball.z=6;
+  ball.vx=kickDir.x*(kind==="trap"?135:220)+n.x*40;
+  ball.vy=kickDir.y*(kind==="trap"?135:220)+n.y*40;
+  ball.vz=kind==="trap"?18:28;
+
+  // Neutral loose ball: no team protection, no immediate ownership.
+  ball.touchGrace=0;
+  ball.protectedTeam=null;
+  ball.cpuPassProtect=0;
+  ball.stealProtectTimer=0;
+  ball.stealProtectTeam=null;
+
+  ball.nutmegTimer=0;
+  ball.nutmegTeam=null;
+  ball.nutmegTarget=null;
+  ball.trickProtectTimer=0;
+  ball.trickProtectTeam=null;
+  ball.trickAttacker=null;
+  ball.trickTarget=null;
+
+  clearSkillIntent();
+  input.trickChainUntil=0;
+  input.lastTrickType=null;
+
+  showMessage(kind==="trap" ? "TOUCH OUT!" : "POKE OUT!",.28);
+  return true;
+}
+
 function techniqueBallReservedFor(p){
   if(ball.nutmegTimer>0 && ball.passFrom){
     return p!==ball.passFrom;
@@ -2946,10 +3028,10 @@ function tryDoubleTouch(attacker){
   clearSkillIntent();
 
   // Half-step sideways + forward burst.
-  attacker.x=clamp(attacker.x+side.x*26+face.x*14,COURT.x+25,COURT.x+COURT.w-25);
-  attacker.y=clamp(attacker.y+side.y*26+face.y*14,COURT.y+25,COURT.y+COURT.h-25);
-  attacker.vx=face.x*320+side.x*190;
-  attacker.vy=face.y*320+side.y*190;
+  attacker.x=clamp(attacker.x+side.x*20+face.x*10,COURT.x+25,COURT.x+COURT.w-25);
+  attacker.y=clamp(attacker.y+side.y*20+face.y*10,COURT.y+25,COURT.y+COURT.h-25);
+  attacker.vx=face.x*270+side.x*155;
+  attacker.vy=face.y*270+side.y*155;
   attacker.dirX=face.x;
   attacker.dirY=face.y;
   attacker.cooldown=.10;
@@ -3047,10 +3129,10 @@ function tryNutmeg(attacker){
   ball.protectedTeam=attacker.team;
 
   // Attacker follows with a fast burst.
-  input.dashTimer=.50;
+  input.dashTimer=.38;
   input.dashCooldown=.48;
-  attacker.vx=face.x*410;
-  attacker.vy=face.y*410;
+  attacker.vx=face.x*350;
+  attacker.vy=face.y*350;
   attacker.dirX=face.x;
   attacker.dirY=face.y;
   attacker.cooldown=.12;
