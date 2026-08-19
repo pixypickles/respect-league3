@@ -828,3 +828,13 @@ body {
   background:linear-gradient(180deg,#35a853,#167432);
   border-color:#91dda4;
 }
+
+/* v122 hidden Oni battle */
+#oniBattleBtn{
+  font-size:.78em;
+  min-height:48px!important;
+  background:linear-gradient(180deg,#5b1720,#2a090e)!important;
+  border-color:#e44b58!important;
+  color:#fff!important;
+  opacity:.92;
+}

@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v121";
+const GAME_VERSION="v122";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -39,6 +39,7 @@ const bracketBtnEl = document.getElementById("bracketBtn");
 const freeMatchBtnEl = document.getElementById("freeMatchBtn");
 const practiceBtnEl = document.getElementById("practiceBtn");
 const developmentBtnEl = document.getElementById("developmentBtn");
+const oniBattleBtnEl = document.getElementById("oniBattleBtn");
 const matchTimeScreenEl = document.getElementById("matchTimeScreen");
 const matchTimeModeNameEl = document.getElementById("matchTimeModeName");
 const time90BtnEl = document.getElementById("time90Btn");
@@ -109,6 +110,11 @@ const LEAGUE_SAVE_KEY="futsalTrapGame.league.v1";
 const DEVELOPMENT_SAVE_KEY="futsalTrapGame.development.v1";
 let leagueState=null;
 let developmentState=null;
+let oniBattleState={
+  fireTimer:1.8,
+  fireZones:[],
+  curveShots:[]
+};
 let useTrainedTeam=false;
 let pendingSelectedTeamId=null;
 
@@ -229,7 +235,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v121: selected team + 3 random opponents = 4-team single round robin.
+  // v122: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -434,7 +440,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  // v121: prevent the same touch from falling through into the newly shown screen.
+  // v122: prevent the same touch from falling through into the newly shown screen.
   menuTransitionLockUntil=performance.now()+360;
 
   for(const el of [teamScreenEl,modeScreenEl,matchTimeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl]){
@@ -479,6 +485,7 @@ function chooseTeamVersion(teamId){
   selectedTeamId=teamId;
   selectedTeamNameEl.textContent=teamDef(teamId).name;
   refreshLeagueButton();
+  refreshOniBattleButton();
 
   if(hasDevelopmentStats(teamId)){
     pendingSelectedTeamId=teamId;
@@ -516,6 +523,156 @@ function confirmMatchTime(seconds){
   pendingTimeBackScreen=null;
   pendingTimeAllows30=false;
   if(fn) fn();
+}
+
+
+function oniBattleUnlocked(){
+  const s=developmentStatsFor(selectedTeamId);
+  return Math.max(s.speed||0,s.kick||0,s.physical||0)>=7;
+}
+
+function refreshOniBattleButton(){
+  if(!oniBattleBtnEl) return;
+  const unlocked=oniBattleUnlocked();
+  oniBattleBtnEl.style.display=unlocked?"":"none";
+}
+
+function startOniBattle(){
+  gameMode="oni";
+  selectedMatchSeconds=60;
+  oniBattleState.fireTimer=1.6;
+  oniBattleState.fireZones=[];
+  oniBattleState.curveShots=[];
+
+  // Use FS.T slot as a base opponent if available, but alter profile at runtime.
+  // If locked/absent, fallback to strongest ordinary team ID.
+  const oniOpponent=(TEAM_DEFS.find(t=>t.id==="fst")?.id) || TEAM_DEFS[TEAM_DEFS.length-1].id;
+  startMatch(oniOpponent);
+
+  // Buff entire enemy side.
+  for(const p of teams.red){
+    p.speed*=1.28;
+    p.devKickMult=1.55;
+    p.devPhysical=7;
+    p.oni=true;
+  }
+}
+
+function spawnOniFireZone(){
+  const x=rand(COURT.x+90,COURT.x+COURT.w-90);
+  const y=rand(COURT.y+70,COURT.y+COURT.h-70);
+  oniBattleState.fireZones.push({x,y,t:.95,warn:.38});
+}
+
+function updateOniBattle(dt){
+  if(gameMode!=="oni") return;
+
+  oniBattleState.fireTimer-=dt;
+  if(oniBattleState.fireTimer<=0){
+    spawnOniFireZone();
+    oniBattleState.fireTimer=rand(1.4,2.5);
+  }
+
+  for(const z of oniBattleState.fireZones){
+    z.t-=dt;
+    if(z.warn>0){
+      z.warn=Math.max(0,z.warn-dt);
+      continue;
+    }
+    // Active flame burst.
+    for(const p of [...teams.blue,...teams.red]){
+      if(Math.hypot(p.x-z.x,p.y-z.y)<54){
+        if(hasDevelopedSuperPhysical && hasDevelopedSuperPhysical(p)) continue;
+        const n=norm(p.x-z.x,p.y-z.y);
+        p.stagger=Math.max(p.stagger||0,1.0);
+        p.vx+=n.x*420;
+        p.vy+=n.y*420;
+        if(p.role==="gk") p.gkFall=Math.max(p.gkFall||0,.8);
+      }
+    }
+  }
+  oniBattleState.fireZones=oniBattleState.fireZones.filter(z=>z.t>0);
+
+  // Curve active oni shots in flight.
+  for(const s of oniBattleState.curveShots){
+    if(!s.active) continue;
+    if(ball!==s.ballRef || ball.owner || !ball.shot){
+      s.active=false;
+      continue;
+    }
+    s.life-=dt;
+    if(s.life<=0){ s.active=false; continue; }
+
+    // Rotate velocity a little each frame for dramatic bend.
+    const ang=s.curveDir*dt*1.8;
+    const vx=ball.vx, vy=ball.vy;
+    ball.vx=vx*Math.cos(ang)-vy*Math.sin(ang);
+    ball.vy=vx*Math.sin(ang)+vy*Math.cos(ang);
+  }
+  oniBattleState.curveShots=oniBattleState.curveShots.filter(s=>s.active);
+}
+
+function markOniCurveShot(p){
+  if(gameMode!=="oni" || p.team!=="red") return;
+  if(Math.random()<.45){
+    oniBattleState.curveShots.push({
+      active:true,
+      ballRef:ball,
+      life:1.15,
+      curveDir:Math.random()<.5?-1:1
+    });
+  }
+}
+
+function drawOniFieldEffects(){
+  if(gameMode!=="oni") return;
+
+  ctx.save();
+
+  // Dark ominous overlay.
+  ctx.fillStyle="rgba(25,8,12,.32)";
+  ctx.fillRect(0,0,W,H);
+
+  // Red glowing court lines overlay.
+  ctx.strokeStyle="rgba(255,60,60,.8)";
+  ctx.lineWidth=3;
+  ctx.strokeRect(COURT.x,COURT.y,COURT.w,COURT.h);
+  ctx.beginPath();
+  ctx.moveTo(W/2,COURT.y);
+  ctx.lineTo(W/2,COURT.y+COURT.h);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(W/2,H/2,85,0,Math.PI*2);
+  ctx.stroke();
+
+  for(const z of oniBattleState.fireZones){
+    if(z.warn>0){
+      const a=.25+.45*(1-z.warn/.38);
+      ctx.strokeStyle=`rgba(255,80,40,${a})`;
+      ctx.lineWidth=4;
+      ctx.beginPath();
+      ctx.arc(z.x,z.y,46,0,Math.PI*2);
+      ctx.stroke();
+    }else{
+      const life=Math.max(0,z.t/.57);
+      ctx.fillStyle=`rgba(255,90,20,${.34+.35*life})`;
+      ctx.beginPath();
+      ctx.arc(z.x,z.y,46,0,Math.PI*2);
+      ctx.fill();
+
+      ctx.fillStyle=`rgba(255,210,70,${.25+.35*life})`;
+      for(let i=0;i<5;i++){
+        const a=i*Math.PI*2/5+elapsed*1.7;
+        const fx=z.x+Math.cos(a)*18;
+        const fy=z.y+Math.sin(a)*18-10;
+        ctx.beginPath();
+        ctx.arc(fx,fy,10+6*Math.sin(elapsed*6+i),0,Math.PI*2);
+        ctx.fill();
+      }
+    }
+  }
+
+  ctx.restore();
 }
 
 function renderTeamSelection(){
@@ -808,7 +965,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v121: vertical hazard lines only, evenly spaced.
+  // v122: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -1299,7 +1456,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v121: forward is always the attacking direction, never toward own goal.
+  // v122: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -1554,6 +1711,7 @@ function returnToMainMenu(){
   if(dashBtn) dashBtn.textContent="DASH";
   renderTeamSelection();
   refreshLeagueButton();
+  refreshOniBattleButton();
   setMenuScreen(teamScreenEl);
 }
 
@@ -1576,6 +1734,7 @@ function finishMatch(){
     gameMode==="deathmatch" ? "DEATHMATCH" :
     gameMode==="deathmatch-explosive" ? "EXPLOSIVE BALL" :
     gameMode==="deathmatch-dragon" ? "DRAGON DEATHMATCH" :
+    gameMode==="oni" ? "SPECIAL MATCH：ONI" :
     "FREE MATCH";
 
   if(gameMode==="free"){
@@ -1662,6 +1821,7 @@ function finishMatch(){
       }
       clearSavedLeague();
       refreshLeagueButton();
+  refreshOniBattleButton();
       addResultButton("新しいリーグ戦",true,startLeague);
       addResultButton("チーム選択へ",false,returnToMainMenu);
     }
@@ -2410,7 +2570,7 @@ function trapWindowFor(p) {
 function attemptTrap(p, dt) {
   if(ball.developedPierce && !ball.owner) return false;
 
-  // v121: TRAP must not vacuum a loose ball from a distance.
+  // v122: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -2462,7 +2622,7 @@ function attemptTrap(p, dt) {
 
     if(input.trap || input.trapPressBuffer>0 || input.trapGraceTimer>0 ||
        (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v121: never stop/snap a ball unless it is genuinely at the feet.
+      // v122: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>50) return false;
 
       ball.owner=p;
@@ -2512,7 +2672,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v121: CPU also needs real contact before claiming/stopping the ball.
+      // v122: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -3003,7 +3163,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v121: any AI field player may shoot when the chance is clearly good.
+  // v122: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3438,7 +3598,7 @@ function updatePhysics(dt) {
     }
   }
 
-  // v121: in DEATHMATCH a loose ball must physically reach the feet.
+  // v122: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -3698,7 +3858,7 @@ function registerTimeStopDashTap(){
 
   const now=performance.now();
 
-  // v121: independent hidden-skill counter.
+  // v122: independent hidden-skill counter.
   // Seven taps can be entered within 2.5 seconds.
   timeStopDashTaps=timeStopDashTaps.filter(t=>now-t<=2500);
   timeStopDashTaps.push(now);
@@ -3886,14 +4046,16 @@ function update(dt) {
   if(gameMode==="deathmatch") updateDeathmatch(dt);
   if(gameMode==="deathmatch-explosive") updateExplosiveBall(dt);
   if(gameMode==="deathmatch-dragon") updateDragonDeathmatch(dt);
+  if(gameMode==="oni") updateOniBattle(dt);
   updatePhysics(dt);
 }
 
 function drawCourt() {
   const greenField=gameMode==="deathmatch-dragon" || gameMode==="deathmatch-explosive";
+  const oniField=gameMode==="oni";
   const electricIndoor=gameMode==="deathmatch";
 
-  ctx.fillStyle=greenField ? "#4b9652" : (electricIndoor ? "#aebbd0" : "#d59a62");
+  ctx.fillStyle=oniField ? "#2b1a1f" : (greenField ? "#4b9652" : (electricIndoor ? "#aebbd0" : "#d59a62"));
   ctx.fillRect(0,0,W,H);
 
   // Special arenas: green turf for explosive/dragon, pale blue-gray indoor floor for electric.
@@ -4244,11 +4406,18 @@ function drawPlayer(p) {
   ctx.arc(headShift-4,-30,1.7,0,Math.PI*2);
   ctx.arc(headShift+4,-30,1.7,0,Math.PI*2);
   ctx.fill();
+  if(p.oni){
+    ctx.fillStyle="#e5e7eb";
+    ctx.beginPath();
+    ctx.moveTo(headShift-8,-37);ctx.lineTo(headShift-15,-49);ctx.lineTo(headShift-4,-40);ctx.closePath();ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(headShift+8,-37);ctx.lineTo(headShift+15,-49);ctx.lineTo(headShift+4,-40);ctx.closePath();ctx.fill();
+  }
 
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v121: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v122: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -4371,6 +4540,7 @@ function draw() {
   drawCourt();
   if(gameMode==="deathmatch") drawDeathmatchEffects();
   if(gameMode==="deathmatch-dragon") drawDragonEffects();
+  if(gameMode==="oni") drawOniFieldEffects();
   if(gameMode==="deathmatch-explosive") drawGenericExplosion();
 
   // sort by y for a tiny bit of depth
@@ -5495,6 +5665,10 @@ function startTournamentTap(e){
 }
 bindMenuTap(tournamentBtnEl,()=>openMatchTimeSelection(startTournament,"リーグ戦",false,modeScreenEl));
 bindMenuTap(developmentBtnEl,()=>openMatchTimeSelection(startDevelopment,"育成モード",true,modeScreenEl));
+bindMenuTap(oniBattleBtnEl,()=>{
+  selectedMatchSeconds=60;
+  startOniBattle();
+});
 bindMenuTap(time90BtnEl,()=>confirmMatchTime(90));
 bindMenuTap(time60BtnEl,()=>confirmMatchTime(60));
 bindMenuTap(time30BtnEl,()=>confirmMatchTime(30));
@@ -5512,6 +5686,7 @@ bindMenuTap(normalTeamBtnEl,()=>{
   pendingSelectedTeamId=null;
   selectedTeamNameEl.textContent=teamDef(selectedTeamId).name;
   refreshLeagueButton();
+  refreshOniBattleButton();
   menuTransitionLockUntil=performance.now()+420;
   setMenuScreen(modeScreenEl);
 });
@@ -5521,6 +5696,7 @@ bindMenuTap(trainedTeamBtnEl,()=>{
   pendingSelectedTeamId=null;
   selectedTeamNameEl.textContent=teamDef(selectedTeamId).name;
   refreshLeagueButton();
+  refreshOniBattleButton();
   menuTransitionLockUntil=performance.now()+420;
   setMenuScreen(modeScreenEl);
 });
@@ -5589,6 +5765,7 @@ opponentBackBtnEl.addEventListener("click",()=>{
 renderTeamSelection();
 selectedTeamNameEl.textContent=teamDef(selectedTeamId).name;
 refreshLeagueButton();
+  refreshOniBattleButton();
 resetKickoff("blue");
 updateScoreLabel();
 setMenuScreen(teamScreenEl);
@@ -5604,7 +5781,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v121";
+  if(v) v.textContent="v122";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v121";
+  if(b) b.textContent="v122";
 });
