@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v118";
+const GAME_VERSION="v119";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -205,7 +205,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v118: selected team + 3 random opponents = 4-team single round robin.
+  // v119: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -355,6 +355,8 @@ function cpuTryNutmeg(p){
   ball.vy=face.y*480;
   ball.vz=6;
   ball.shot=false;
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null;
   ball.power=480;
   ball.touchGrace=.15;
   ball.protectedTeam=p.team;
@@ -408,7 +410,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  // v118: prevent the same touch from falling through into the newly shown screen.
+  // v119: prevent the same touch from falling through into the newly shown screen.
   menuTransitionLockUntil=performance.now()+360;
 
   for(const el of [teamScreenEl,modeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl]){
@@ -751,7 +753,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v118: vertical hazard lines only, evenly spaced.
+  // v119: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -1242,7 +1244,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v118: forward is always the attacking direction, never toward own goal.
+  // v119: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -1724,6 +1726,8 @@ function setupPracticePlayers(type){
   ball.passTarget=null;
   ball.passFrom=null;
   ball.shot=false;
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null;
   ball.touchGrace=.12;
 }
 
@@ -1876,6 +1880,8 @@ const ball = {
   passFrom:null,
   returnRequested:false,
   shot:false,
+  developedPierce:false,
+  developedPierceShooter:null,
   power:0,
   touchGrace:0,
   protectedTeam:null,
@@ -1926,7 +1932,9 @@ function resetKickoff(team="blue") {
   ball.owner=starter;
   ball.x=starter.x+(team==="blue"?30:-30);
   ball.y=starter.y;
-  ball.z=0; ball.vx=ball.vy=ball.vz=0; ball.shot=false; ball.passTarget=null;
+  ball.z=0; ball.vx=ball.vy=ball.vz=0; ball.shot=false;
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null; ball.passTarget=null;
   ball.touchGrace=.18; ball.protectedTeam=starter.team;
   ball.dashProtectTimer=0; ball.dashProtectTeam=null;
   ball.nutmegTimer=0; ball.nutmegTeam=null; ball.nutmegTarget=null;
@@ -2161,6 +2169,8 @@ function kickNearbyLooseBall(p, kind="pass") {
     ball.vy=n.y*380;
     ball.vz=24;
     ball.shot=false;
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null;
     ball.power=380;
 
     if(p.controlled) input.postKickNoAutoTrap=.50;
@@ -2218,6 +2228,10 @@ function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
   ball.passFrom=p;
   ball.passTarget=target;
   ball.shot=shot;
+  const devStats=(gameMode==="development" || useTrainedTeam) && p.team==="blue"
+    ? developmentStatsFor(selectedTeamId) : null;
+  ball.developedPierce=!!(shot && devStats && (devStats.kick||0)>=7);
+  ball.developedPierceShooter=ball.developedPierce?p:null;
   ball.power=speed;
   ball.touchGrace=.12;
   ball.protectedTeam=p.team;
@@ -2339,7 +2353,9 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
-  // v118: TRAP must not vacuum a loose ball from a distance.
+  if(ball.developedPierce && !ball.owner) return false;
+
+  // v119: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -2391,7 +2407,7 @@ function attemptTrap(p, dt) {
 
     if(input.trap || input.trapPressBuffer>0 || input.trapGraceTimer>0 ||
        (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v118: never stop/snap a ball unless it is genuinely at the feet.
+      // v119: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>50) return false;
 
       ball.owner=p;
@@ -2441,7 +2457,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v118: CPU also needs real contact before claiming/stopping the ball.
+      // v119: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -2921,7 +2937,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v118: any AI field player may shoot when the chance is clearly good.
+  // v119: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3169,6 +3185,8 @@ function fallenGKParry(p){
   ball.vy=n.y*speed;
   ball.vz=Math.max(ball.vz,70);
   ball.shot=false;
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null;
   ball.lastTouch=p;
   ball.touchGrace=.12;
   showMessage("DESPERATE SAVE!",.34);
@@ -3201,6 +3219,8 @@ function gkTimedTrickSave(p){
   ball.vy=side*rand(90,180);
   ball.vz=65;
   ball.shot=false;
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null;
   ball.lastTouch=p;
   ball.touchGrace=.14;
 
@@ -3244,6 +3264,20 @@ function updateGK(p,dt) {
   p.x=lerp(p.x,gx,dt*6);
   p.y=lerp(p.y,targetY,dt*3.5);
 
+  // Development kick +7: strong shots punch through the keeper.
+  if(ball.developedPierce && !ball.owner && ball.shot && ball.z<65 && dist(p,ball)<48){
+    const n=norm(ball.vx,ball.vy);
+    p.gkFall=Math.max(p.gkFall||0,1.0);
+    p.stagger=Math.max(p.stagger||0,.8);
+    p.vx=n.x*460;
+    p.vy=n.y*210;
+    ball.vx=n.x*Math.max(780,Math.hypot(ball.vx,ball.vy)*.98);
+    ball.vy=n.y*Math.max(780,Math.hypot(ball.vx,ball.vy)*.98);
+    ball.owner=null;
+    showMessage("POWER THROUGH!",.30);
+    return;
+  }
+
   const danger = !ball.owner && ball.shot && ball.z<60 && dist(p,ball)<62*gkStrength;
 
   // v56: slow loose balls / soft passes in the keeper's body line must never be ignored.
@@ -3254,6 +3288,8 @@ function updateGK(p,dt) {
     ball.vx=ball.vy=ball.vz=0;
     ball.z=0;
     ball.shot=false;
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null;
     ball.lastTouch=p;
     return;
   }
@@ -3264,6 +3300,8 @@ function updateGK(p,dt) {
       ball.vx=ball.vy=ball.vz=0;
       ball.z=0;
       ball.shot=false;
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null;
       showMessage("GK SUPER CATCH!",.7);
       return;
     }
@@ -3280,6 +3318,8 @@ function updateGK(p,dt) {
       ball.vy=side*rand(110,210);
       ball.vz=75;
       ball.shot=false;
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null;
       ball.lastTouch=p;
       if(ball.power>590) p.gkFall=.42;
       return;
@@ -3299,6 +3339,8 @@ function updateGK(p,dt) {
       ball.vy=side*rand(120,260);
       ball.vz=72;
       ball.shot=false;
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null;
       ball.lastTouch=p;
       if(ball.power>590) p.gkFall=.42;
     }
@@ -3315,7 +3357,7 @@ function updateGK(p,dt) {
 }
 
 function updatePhysics(dt) {
-  // v118: in DEATHMATCH a loose ball must physically reach the feet.
+  // v119: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -3372,7 +3414,25 @@ function updatePhysics(dt) {
   if(ball.dashProtectTimer<=0) ball.dashProtectTeam=null;
   if(ball.touchGrace<=0) ball.protectedTeam=null;
 
-  for(const p of [...teams.blue,...teams.red]) {
+    if(ball.developedPierce && !ball.owner && ball.shot){
+    const shooter=ball.developedPierceShooter;
+    const speed=Math.hypot(ball.vx,ball.vy);
+    if(speed>0){
+      const n=norm(ball.vx,ball.vy);
+      for(const q of [...teams.blue,...teams.red]){
+        if(q===shooter) continue;
+        if(q.role==="gk") continue;
+        if(dist(q,ball)<25){
+          q.stagger=Math.max(q.stagger||0,.72);
+          q.vx=n.x*410;
+          q.vy=n.y*180;
+          // Do not deflect or slow the shot.
+        }
+      }
+    }
+  }
+
+for(const p of [...teams.blue,...teams.red]) {
     p.cooldown=Math.max(0,p.cooldown-dt);
     p.receiveLock=Math.max(0,p.receiveLock-dt);
     p.autoControlTimer=Math.max(0,p.autoControlTimer-dt);
@@ -3516,6 +3576,8 @@ function goal(who) {
   showMessage(`${who==="BLUE"?teamDef(selectedTeamId).name:teamDef(opponentTeamId).name} GOAL!`,1);
   updateScoreLabel();
   ball.owner=null;ball.vx=ball.vy=ball.vz=0;ball.shot=false;
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null;
 }
 
 
@@ -3555,7 +3617,7 @@ function registerTimeStopDashTap(){
 
   const now=performance.now();
 
-  // v118: independent hidden-skill counter.
+  // v119: independent hidden-skill counter.
   // Seven taps can be entered within 2.5 seconds.
   timeStopDashTaps=timeStopDashTaps.filter(t=>now-t<=2500);
   timeStopDashTaps.push(now);
@@ -4105,7 +4167,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v118: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v119: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -4638,6 +4700,8 @@ function tryNutmeg(attacker){
   ball.vy=face.y*500;
   ball.vz=8;
   ball.shot=false;
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null;
   ball.power=500;
   ball.touchGrace=.16;
   ball.protectedTeam=attacker.team;
@@ -4707,6 +4771,8 @@ function awardFreeKick(fouledPlayer, offender){
   ball.owner=null;
   ball.vx=ball.vy=ball.vz=0;
   ball.shot=false;
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null;
   ball.passTarget=null;
   ball.passFrom=null;
 
@@ -4742,6 +4808,8 @@ function resumeFreeKick(){
   ball.z=0;
   ball.vx=ball.vy=ball.vz=0;
   ball.shot=false;
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null;
   ball.passTarget=null;
   ball.passFrom=null;
   ball.lastTouch=fouledPlayer;
@@ -5443,7 +5511,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v118";
+  if(v) v.textContent="v119";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v118";
+  if(b) b.textContent="v119";
 });
