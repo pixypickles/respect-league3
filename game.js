@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v113";
+const GAME_VERSION="v114";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -205,7 +205,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v113: selected team + 3 random opponents = 4-team single round robin.
+  // v114: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -408,7 +408,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  // v113: prevent the same touch from falling through into the newly shown screen.
+  // v114: prevent the same touch from falling through into the newly shown screen.
   menuTransitionLockUntil=performance.now()+360;
 
   for(const el of [teamScreenEl,modeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl]){
@@ -589,6 +589,10 @@ function prepareMatch(){
   input.comboStage=0;
   input.comboUntil=0;
   input.lastDashTapAt=-9999;
+  timeStopTimer=0;
+  timeStopDashTaps=[];
+  timeStopBallFrozen=false;
+  timeStopBallSnapshot=null;
   input.trapPressBuffer=0;
   input.trickChainUntil=0;
   input.lastTrickType=null;
@@ -747,7 +751,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v113: vertical hazard lines only, evenly spaced.
+  // v114: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -1238,7 +1242,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v113: forward is always the attacking direction, never toward own goal.
+  // v114: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -1763,6 +1767,11 @@ let matchLeft = MATCH_SECONDS;
 let scoreBlue = 0, scoreRed = 0;
 let goalPause = 0;
 let messageTimer = 0;
+let timeStopTimer=0;
+let timeStopDashTaps=[];
+let timeStopBallFrozen=false;
+let timeStopBallSnapshot=null;
+
 
 const input = {
   sx: 0, sy: 0,
@@ -2324,7 +2333,7 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
-  // v113: TRAP must not vacuum a loose ball from a distance.
+  // v114: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -2376,7 +2385,7 @@ function attemptTrap(p, dt) {
 
     if(input.trap || input.trapPressBuffer>0 || input.trapGraceTimer>0 ||
        (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v113: never stop/snap a ball unless it is genuinely at the feet.
+      // v114: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>50) return false;
 
       ball.owner=p;
@@ -2426,7 +2435,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v113: CPU also needs real contact before claiming/stopping the ball.
+      // v114: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -2906,7 +2915,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v113: any AI field player may shoot when the chance is clearly good.
+  // v114: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3300,7 +3309,7 @@ function updateGK(p,dt) {
 }
 
 function updatePhysics(dt) {
-  // v113: in DEATHMATCH a loose ball must physically reach the feet.
+  // v114: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -3501,6 +3510,153 @@ function goal(who) {
   ball.owner=null;ball.vx=ball.vy=ball.vz=0;ball.shot=false;
 }
 
+
+function timeStopUnlocked(){
+  const stats=developmentStatsFor(selectedTeamId);
+  return (gameMode==="development" || useTrainedTeam) && (stats.speed||0)>=10;
+}
+
+function triggerTimeStop(){
+  if(timeStopTimer>0 || !timeStopUnlocked()) return false;
+
+  timeStopTimer=5.0;
+  timeStopDashTaps=[];
+
+  const c=controlled();
+  timeStopBallFrozen=ball.owner!==c;
+  timeStopBallSnapshot=timeStopBallFrozen ? {
+    x:ball.x,y:ball.y,z:ball.z,
+    vx:ball.vx,vy:ball.vy,vz:ball.vz,
+    owner:ball.owner,
+    passTarget:ball.passTarget,
+    passFrom:ball.passFrom,
+    shot:ball.shot,
+    power:ball.power
+  } : null;
+
+  if(timeStopBallFrozen){
+    ball.vx=ball.vy=ball.vz=0;
+  }
+
+  showMessage("TIME STOP",.55);
+  return true;
+}
+
+function registerTimeStopDashTap(){
+  if(!timeStopUnlocked() || timeStopTimer>0) return false;
+  const now=performance.now();
+
+  // Seven taps inside 1.4 seconds.
+  timeStopDashTaps=timeStopDashTaps.filter(t=>now-t<=1400);
+  timeStopDashTaps.push(now);
+
+  if(timeStopDashTaps.length>=7){
+    return triggerTimeStop();
+  }
+  return false;
+}
+
+function releaseTimeStoppedBallByTouch(){
+  if(timeStopTimer<=0 || !timeStopBallFrozen) return false;
+  const c=controlled();
+  if(!c || dist(c,ball)>34) return false;
+
+  const snap=timeStopBallSnapshot;
+  timeStopBallFrozen=false;
+
+  if(snap){
+    // A ball held by another frozen player becomes loose when touched.
+    ball.owner=(snap.owner===c)?c:null;
+    ball.passTarget=null;
+    ball.passFrom=snap.passFrom;
+    ball.shot=snap.shot;
+    ball.power=snap.power;
+    ball.vx=snap.vx;
+    ball.vy=snap.vy;
+    ball.vz=snap.vz;
+  }
+
+  timeStopBallSnapshot=null;
+  return true;
+}
+
+function finishTimeStop(){
+  if(timeStopBallFrozen && timeStopBallSnapshot){
+    const s=timeStopBallSnapshot;
+    ball.x=s.x; ball.y=s.y; ball.z=s.z;
+    ball.vx=s.vx; ball.vy=s.vy; ball.vz=s.vz;
+    ball.owner=s.owner;
+    ball.passTarget=s.passTarget;
+    ball.passFrom=s.passFrom;
+    ball.shot=s.shot;
+    ball.power=s.power;
+  }
+  timeStopBallFrozen=false;
+  timeStopBallSnapshot=null;
+  timeStopDashTaps=[];
+  showMessage("TIME RESUME",.30);
+}
+
+function updateDuringTimeStop(dt){
+  const c=controlled();
+  if(!c) return;
+
+  timeStopTimer=Math.max(0,timeStopTimer-dt);
+
+  // Snapshot all frozen players before physics.
+  const frozen=[...teams.blue,...teams.red]
+    .filter(p=>p!==c)
+    .map(p=>({
+      p,x:p.x,y:p.y,vx:p.vx,vy:p.vy,
+      runPhase:p.runPhase,kickAnim:p.kickAnim,slide:p.slide,
+      shoulder:p.shoulder,stagger:p.stagger,gkFall:p.gkFall
+    }));
+
+  // Only the controlled character receives movement/AI updates.
+  updateControlled(c,dt);
+
+  // Touching the stopped ball releases only the ball.
+  releaseTimeStoppedBallByTouch();
+
+  // Keep frozen ball fixed before physics.
+  let frozenBallPos=null;
+  if(timeStopBallFrozen){
+    frozenBallPos={x:ball.x,y:ball.y,z:ball.z};
+    ball.vx=ball.vy=ball.vz=0;
+  }
+
+  updatePhysics(dt);
+
+  // Restore every other character exactly where they were.
+  for(const s of frozen){
+    s.p.x=s.x; s.p.y=s.y;
+    s.p.vx=0; s.p.vy=0;
+    s.p.runPhase=s.runPhase;
+    s.p.kickAnim=s.kickAnim;
+    s.p.slide=s.slide;
+    s.p.shoulder=s.shoulder;
+    s.p.stagger=s.stagger;
+    s.p.gkFall=s.gkFall;
+  }
+
+  if(timeStopBallFrozen && frozenBallPos){
+    ball.x=frozenBallPos.x;
+    ball.y=frozenBallPos.y;
+    ball.z=frozenBallPos.z;
+    ball.vx=ball.vy=ball.vz=0;
+    if(timeStopBallSnapshot){
+      ball.owner=timeStopBallSnapshot.owner;
+      ball.passTarget=timeStopBallSnapshot.passTarget;
+      ball.passFrom=timeStopBallSnapshot.passFrom;
+    }
+  }
+
+  if(timeStopTimer<=0){
+    timeStopTimer=0;
+    finishTimeStop();
+  }
+}
+
 function update(dt) {
   if(gamePhase!=="match" && gamePhase!=="practice") return;
   if(gamePhase==="practice"){
@@ -3532,6 +3688,11 @@ function update(dt) {
       finishMatch();
       return;
     }
+  }
+
+  if(timeStopTimer>0){
+    updateDuringTimeStop(dt);
+    return;
   }
 
   for(const p of teams.blue) p.role==="gk"?updateGK(p,dt):updateAI(p,dt);
@@ -3902,7 +4063,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v113: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v114: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -3960,6 +4121,13 @@ function draw() {
     ctx.beginPath();
     ctx.arc(c.x,c.y,36+10*(1-closeness),0,Math.PI*2);
     ctx.stroke();
+  }
+
+  if(timeStopTimer>0){
+    ctx.save();
+    ctx.fillStyle="rgba(130,165,255,.10)";
+    ctx.fillRect(0,0,W,H);
+    ctx.restore();
   }
 }
 
@@ -4780,6 +4948,14 @@ trapBtn.addEventListener("pointercancel",releaseTrap);
 
 // DASH is a quick burst, not a hold-to-sprint button.
 dashBtn.addEventListener("pointerdown",e=>{
+  // Hidden trained-speed skill.
+  if(registerTimeStopDashTap()){
+    e.preventDefault();
+    dashBtn.classList.add("active");
+    setTimeout(()=>dashBtn.classList.remove("active"),120);
+    return;
+  }
+
   if(gameMode==="deathmatch"){
     e.preventDefault();
     fireBazooka(controlled());
@@ -5137,7 +5313,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v113";
+  if(v) v.textContent="v114";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v113";
+  if(b) b.textContent="v114";
 });
