@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v140";
+const GAME_VERSION="v141";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -267,7 +267,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v140: selected team + 3 random opponents = 4-team single round robin.
+  // v141: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -437,6 +437,7 @@ function cpuTryNutmeg(p){
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
   ball.power=480;
   ball.touchGrace=.15;
   ball.protectedTeam=p.team;
@@ -490,7 +491,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  // v140: prevent the same touch from falling through into the newly shown screen.
+  // v141: prevent the same touch from falling through into the newly shown screen.
   menuTransitionLockUntil=performance.now()+360;
 
   for(const el of [teamScreenEl,modeScreenEl,matchTimeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl,secretInfoScreenEl]){
@@ -911,6 +912,7 @@ function oniShootAtPlayerGoal(p,type="normal"){
     ball.developedPierceShooter=p;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
     oniBattleState.pierceUsed=true;
     showMessage("鬼蹴・剛！",.35);
 
@@ -920,6 +922,7 @@ function oniShootAtPlayerGoal(p,type="normal"){
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
     oniBattleState.curveUsed=true;
     oniBattleState.curveShots.push({
       active:true,
@@ -935,12 +938,14 @@ function oniShootAtPlayerGoal(p,type="normal"){
     ball.developedPierceShooter=null;
     ball.oniBlastShot=true;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
     oniBattleState.blastUsed=true;
     showMessage("鬼蹴・爆！",.35);
 
   }else{
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
     // Boss normal shots are still heavy; many are piercing.
     if(Math.random()<.60){
       ball.developedPierce=true;
@@ -1314,7 +1319,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v140: vertical hazard lines only, evenly spaced.
+  // v141: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -1404,12 +1409,43 @@ function explodeDangerBall(reason="impact"){
 }
 
 
-function explosiveGKImpact(gk){
-  if(gameMode!=="deathmatch-explosive" || !gk || gk.role!=="gk") return;
-  if(deathmatchState.explosiveImpactCooldown>0) return;
-  if(dist(gk,ball)<34 && ball.z<42){
-    explodeDangerBall("gk");
+function explosiveGKImpact(p){
+  if(gameMode!=="deathmatch-explosive" || !p || p.role!=="gk") return false;
+
+  // Never allow an explosive ball to stay attached to a keeper.
+  if(ball.owner===p){
+    ball.owner=null;
   }
+
+  if(ball.explosiveGKLock>0) return false;
+  if(dist(p,ball)>54 || ball.z>46) return false;
+
+  ball.explosiveGKLock=.35;
+
+  // One impact = one explosion.
+  explodeDangerBall("gk");
+
+  const n=norm(ball.x-p.x,ball.y-p.y);
+  const fallback=norm(p.team==="blue"?1:-1,0);
+  const dir=(Math.abs(n.x)+Math.abs(n.y)>.01)?n:fallback;
+
+  p.gkFall=Math.max(p.gkFall||0,.95);
+  p.stagger=Math.max(p.stagger||0,.75);
+  p.vx=-dir.x*320;
+  p.vy=-dir.y*220;
+
+  // The ball becomes loose immediately after the explosion.
+  ball.owner=null;
+  ball.passTarget=null;
+  ball.passFrom=null;
+  ball.shot=false;
+  ball.vx=dir.x*rand(220,340);
+  ball.vy=dir.y*rand(160,300);
+  ball.vz=Math.max(ball.vz,85);
+  ball.touchGrace=.16;
+  ball.lastTouch=p;
+
+  return true;
 }
 
 
@@ -1442,6 +1478,18 @@ function nudgeExplosiveBallOffWall(){
 }
 
 function updateExplosiveBall(dt){
+  // Safety: explosive ball must never remain attached to a keeper.
+  if(ball.owner && ball.owner.role==="gk"){
+    const gk=ball.owner;
+    ball.owner=null;
+    if(ball.explosiveGKLock<=0){
+      explosiveGKImpact(gk);
+    }
+  }
+
+  // While another player owns it, do not run wall/impact explosion loops.
+  if(ball.owner) return;
+
   if(gameMode!=="deathmatch-explosive") return;
 
   deathmatchState.explosiveImpactCooldown=
@@ -1805,7 +1853,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v140: forward is always the attacking direction, never toward own goal.
+  // v141: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -2033,7 +2081,7 @@ function startMatch(opponentId){
   prepareMatch();
   hideMenu();
 
-  // v140: roster has finished initializing; now force boss graphics/stats.
+  // v141: roster has finished initializing; now force boss graphics/stats.
   forceRefreshPlayableBossTeams();
 }
 
@@ -2392,6 +2440,7 @@ function setupPracticePlayers(type){
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
   ball.touchGrace=.12;
 }
 
@@ -2548,6 +2597,7 @@ const ball = {
   developedPierceShooter:null,
   oniBlastShot:false,
   oniBlastConsumed:false,
+  explosiveGKLock:0,
   power:0,
   touchGrace:0,
   protectedTeam:null,
@@ -2609,7 +2659,8 @@ function resetKickoff(team="blue") {
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
-    ball.oniBlastConsumed=false; ball.passTarget=null;
+    ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0; ball.passTarget=null;
   ball.touchGrace=.18; ball.protectedTeam=starter.team;
   ball.dashProtectTimer=0; ball.dashProtectTeam=null;
   ball.nutmegTimer=0; ball.nutmegTeam=null; ball.nutmegTarget=null;
@@ -2850,6 +2901,7 @@ function kickNearbyLooseBall(p, kind="pass") {
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
     ball.power=380;
 
     if(p.controlled) input.postKickNoAutoTrap=.50;
@@ -2930,7 +2982,7 @@ function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
     if(ok) return;
   }
 
-  // v140: Peach homing belongs only to Momotaro's own special shot.
+  // v141: Peach homing belongs only to Momotaro's own special shot.
   if(gameMode==="momotaro" && (!p || p!==momotaroState.peachShooter)){
     momotaroState.peachShot=false;
     momotaroState.peachHitPost=false;
@@ -3081,7 +3133,7 @@ function attemptTrap(p, dt) {
 
   if(ball.developedPierce && !ball.owner) return false;
 
-  // v140: TRAP must not vacuum a loose ball from a distance.
+  // v141: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -3133,7 +3185,7 @@ function attemptTrap(p, dt) {
 
     if(input.trap || input.trapPressBuffer>0 || input.trapGraceTimer>0 ||
        (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v140: never stop/snap a ball unless it is genuinely at the feet.
+      // v141: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>50) return false;
 
       ball.owner=p;
@@ -3183,7 +3235,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v140: CPU also needs real contact before claiming/stopping the ball.
+      // v141: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -3674,7 +3726,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v140: any AI field player may shoot when the chance is clearly good.
+  // v141: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3789,7 +3841,7 @@ function aiWithBall(p,dt) {
 }
 
 function updateAI(p,dt) {
-  // v140: controlled player must never receive CPU boss decisions.
+  // v141: controlled player must never receive CPU boss decisions.
   if(p.controlled) return;
 
 
@@ -3998,6 +4050,7 @@ function fallenGKParry(p){
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
   ball.lastTouch=p;
   ball.touchGrace=.12;
   showMessage("DESPERATE SAVE!",.34);
@@ -4036,6 +4089,7 @@ function gkTimedTrickSave(p){
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
   ball.lastTouch=p;
   ball.touchGrace=.14;
 
@@ -4076,7 +4130,7 @@ function blowThroughKeeper(p){
 }
 
 function updateGK(p,dt) {
-  // v140: 鬼蹴・剛 is absolute. No keeper save path may touch it.
+  // v141: 鬼蹴・剛 is absolute. No keeper save path may touch it.
   if(isOniHardPierce()){
     if(dist(p,ball)<70 && ball.z<80){
       blowThroughKeeper(p);
@@ -4084,7 +4138,7 @@ function updateGK(p,dt) {
     return;
   }
 
-  // v140: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
+  // v141: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
   if(ball.developedPierce && !ball.owner && ball.shot && ball.z<70 && dist(p,ball)<58){
     const n=norm(ball.vx,ball.vy);
     p.gkFall=Math.max(p.gkFall||0,1.20);
@@ -4097,7 +4151,11 @@ function updateGK(p,dt) {
     return;
   }
 
-  if(gameMode==="deathmatch-explosive") explosiveGKImpact(p);
+  if(gameMode==="deathmatch-explosive"){
+    if(explosiveGKImpact(p)) return;
+    // Explosive balls are never held/caught by the keeper.
+    if(ball.owner===p) ball.owner=null;
+  }
 
   if(nutmegProtectedAgainst(p) || trickProtectedAgainst(p)){
     if(gkTimedTrickSave(p)) return;
@@ -4143,6 +4201,10 @@ function updateGK(p,dt) {
   const ballSpeed=Math.hypot(ball.vx,ball.vy);
   const slowBall=!ball.owner && ball.z<24 && ballSpeed<220 && dist(p,ball)<54;
   if(slowBall){
+    if(gameMode==="deathmatch-explosive"){
+      explosiveGKImpact(p);
+      return;
+    }
     ball.owner=p;
     ball.vx=ball.vy=ball.vz=0;
     ball.z=0;
@@ -4151,12 +4213,17 @@ function updateGK(p,dt) {
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
     ball.lastTouch=p;
     return;
   }
   if(danger) {
     // Timed TRAP remains the strongest keeper action.
     if(p.team==="blue" && input.trap && dist(p,ball)<54) {
+      if(gameMode==="deathmatch-explosive"){
+        explosiveGKImpact(p);
+        return;
+      }
       ball.owner=p;
       ball.vx=ball.vy=ball.vz=0;
       ball.z=0;
@@ -4165,6 +4232,7 @@ function updateGK(p,dt) {
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
       showMessage("GK SUPER CATCH!",.7);
       return;
     }
@@ -4185,6 +4253,7 @@ function updateGK(p,dt) {
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
       ball.lastTouch=p;
       if(ball.power>590) p.gkFall=.42;
       return;
@@ -4208,6 +4277,7 @@ function updateGK(p,dt) {
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
       ball.lastTouch=p;
       if(ball.power>590) p.gkFall=.42;
     }
@@ -4365,7 +4435,9 @@ function applyPlayableBossTeamTraits(){
 }
 
 function updatePhysics(dt) {
-  // v140: Momotaro boss super armor.
+  if(ball.explosiveGKLock>0) ball.explosiveGKLock=Math.max(0,ball.explosiveGKLock-dt);
+
+  // v141: Momotaro boss super armor.
   for(const mp of [...teams.blue,...teams.red]){
     if(hasMomotaroSuperArmor(mp)){
       if("stun" in mp) mp.stun=0;
@@ -4412,7 +4484,7 @@ function updatePhysics(dt) {
     }
   }
 
-  // v140: in DEATHMATCH a loose ball must physically reach the feet.
+  // v141: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -4650,6 +4722,7 @@ function goal(who) {
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
 }
 
 
@@ -4689,7 +4762,7 @@ function registerTimeStopDashTap(){
 
   const now=performance.now();
 
-  // v140: independent hidden-skill counter.
+  // v141: independent hidden-skill counter.
   // Seven taps can be entered within 2.5 seconds.
   timeStopDashTaps=timeStopDashTaps.filter(t=>now-t<=2500);
   timeStopDashTaps.push(now);
@@ -5175,12 +5248,12 @@ function drawMomotaroCharacter(p){
 
 function drawPlayer(p) {
 
-  // v140: boss characters keep their dedicated graphics even while sliding/staggered.
+  // v141: boss characters keep their dedicated graphics even while sliding/staggered.
   if(p.momotaroRole && !p.momotaroGK){
     drawMomotaroCharacter(p);
     return;
   }
-  // v140 visual fallback: infer playable boss graphics from the side's selected team.
+  // v141 visual fallback: infer playable boss graphics from the side's selected team.
   const sideBossKind=bossKindForTeamId(p.team==="blue"?selectedTeamId:opponentTeamId);
   if(sideBossKind==="oni" && !p.oni){
     p.oni=true;
@@ -5420,7 +5493,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v140: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v141: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -5997,6 +6070,7 @@ function tryNutmeg(attacker){
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
   ball.power=500;
   ball.touchGrace=.16;
   ball.protectedTeam=attacker.team;
@@ -6070,6 +6144,7 @@ function awardFreeKick(fouledPlayer, offender){
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
   ball.passTarget=null;
   ball.passFrom=null;
 
@@ -6109,6 +6184,7 @@ function resumeFreeKick(){
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
     ball.oniBlastConsumed=false;
+    ball.explosiveGKLock=0;
   ball.passTarget=null;
   ball.passFrom=null;
   ball.lastTouch=fouledPlayer;
@@ -6842,7 +6918,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v140";
+  if(v) v.textContent="v141";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v140";
+  if(b) b.textContent="v141";
 });
