@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v116";
+const GAME_VERSION="v117";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -205,7 +205,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v116: selected team + 3 random opponents = 4-team single round robin.
+  // v117: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -408,7 +408,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  // v116: prevent the same touch from falling through into the newly shown screen.
+  // v117: prevent the same touch from falling through into the newly shown screen.
   menuTransitionLockUntil=performance.now()+360;
 
   for(const el of [teamScreenEl,modeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl]){
@@ -751,7 +751,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v116: vertical hazard lines only, evenly spaced.
+  // v117: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -1242,7 +1242,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v116: forward is always the attacking direction, never toward own goal.
+  // v117: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -2333,7 +2333,7 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
-  // v116: TRAP must not vacuum a loose ball from a distance.
+  // v117: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -2385,7 +2385,7 @@ function attemptTrap(p, dt) {
 
     if(input.trap || input.trapPressBuffer>0 || input.trapGraceTimer>0 ||
        (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v116: never stop/snap a ball unless it is genuinely at the feet.
+      // v117: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>50) return false;
 
       ball.owner=p;
@@ -2435,7 +2435,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v116: CPU also needs real contact before claiming/stopping the ball.
+      // v117: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -2915,7 +2915,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v116: any AI field player may shoot when the chance is clearly good.
+  // v117: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3309,7 +3309,7 @@ function updateGK(p,dt) {
 }
 
 function updatePhysics(dt) {
-  // v116: in DEATHMATCH a loose ball must physically reach the feet.
+  // v117: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -3547,7 +3547,7 @@ function registerTimeStopDashTap(){
 
   const now=performance.now();
 
-  // v116: independent hidden-skill counter.
+  // v117: independent hidden-skill counter.
   // Seven taps can be entered within 2.5 seconds.
   timeStopDashTaps=timeStopDashTaps.filter(t=>now-t<=2500);
   timeStopDashTaps.push(now);
@@ -4074,7 +4074,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v116: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v117: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -4107,6 +4107,91 @@ function drawBall() {
   ctx.restore();
 }
 
+
+function drawTimeStopEffect(){
+  if(timeStopTimer<=0) return;
+
+  const remain=clamp(timeStopTimer/5,0,1);
+  const cx=W/2;
+  const cy=H/2;
+
+  ctx.save();
+
+  // Cool blue wash over the entire scene.
+  ctx.fillStyle="rgba(82,126,210,.18)";
+  ctx.fillRect(0,0,W,H);
+
+  // Slight desaturation/white haze feeling.
+  ctx.fillStyle="rgba(225,238,255,.10)";
+  ctx.fillRect(0,0,W,H);
+
+  // Clock face.
+  const r=Math.min(W,H)*.16;
+  ctx.translate(cx,cy);
+
+  ctx.strokeStyle="rgba(235,245,255,.72)";
+  ctx.lineWidth=5;
+  ctx.beginPath();
+  ctx.arc(0,0,r,0,Math.PI*2);
+  ctx.stroke();
+
+  ctx.strokeStyle="rgba(180,215,255,.42)";
+  ctx.lineWidth=2;
+  ctx.beginPath();
+  ctx.arc(0,0,r+12,0,Math.PI*2);
+  ctx.stroke();
+
+  // Hour marks.
+  for(let i=0;i<12;i++){
+    const a=i*Math.PI/6-Math.PI/2;
+    const inner=r-14;
+    const outer=r-4;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a)*inner,Math.sin(a)*inner);
+    ctx.lineTo(Math.cos(a)*outer,Math.sin(a)*outer);
+    ctx.strokeStyle="rgba(245,250,255,.72)";
+    ctx.lineWidth=(i%3===0)?4:2;
+    ctx.stroke();
+  }
+
+  // Frozen clock hands.
+  ctx.strokeStyle="rgba(255,255,255,.9)";
+  ctx.lineCap="round";
+
+  ctx.lineWidth=5;
+  ctx.beginPath();
+  ctx.moveTo(0,0);
+  ctx.lineTo(0,-r*.52);
+  ctx.stroke();
+
+  ctx.lineWidth=4;
+  ctx.beginPath();
+  ctx.moveTo(0,0);
+  ctx.lineTo(r*.42,0);
+  ctx.stroke();
+
+  ctx.fillStyle="rgba(255,255,255,.92)";
+  ctx.beginPath();
+  ctx.arc(0,0,6,0,Math.PI*2);
+  ctx.fill();
+
+  // Outer countdown sweep.
+  ctx.strokeStyle="rgba(125,200,255,.85)";
+  ctx.lineWidth=7;
+  ctx.beginPath();
+  ctx.arc(0,0,r+23,-Math.PI/2,-Math.PI/2+Math.PI*2*remain);
+  ctx.stroke();
+
+  // Pulsing ring to make the effect feel supernatural.
+  const pulse=(Math.sin(elapsed*8)+1)*.5;
+  ctx.strokeStyle=`rgba(175,220,255,${.16+.18*pulse})`;
+  ctx.lineWidth=10;
+  ctx.beginPath();
+  ctx.arc(0,0,r+36+pulse*8,0,Math.PI*2);
+  ctx.stroke();
+
+  ctx.restore();
+}
 function draw() {
   ctx.clearRect(0,0,W,H);
   drawCourt();
@@ -4134,12 +4219,7 @@ function draw() {
     ctx.stroke();
   }
 
-  if(timeStopTimer>0){
-    ctx.save();
-    ctx.fillStyle="rgba(130,165,255,.10)";
-    ctx.fillRect(0,0,W,H);
-    ctx.restore();
-  }
+  drawTimeStopEffect();
 }
 
 function frame(now) {
@@ -5328,7 +5408,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v116";
+  if(v) v.textContent="v117";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v116";
+  if(b) b.textContent="v117";
 });
