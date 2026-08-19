@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v142";
+const GAME_VERSION="v143";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -267,7 +267,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v142: selected team + 3 random opponents = 4-team single round robin.
+  // v143: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -491,7 +491,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  // v142: prevent the same touch from falling through into the newly shown screen.
+  // v143: prevent the same touch from falling through into the newly shown screen.
   menuTransitionLockUntil=performance.now()+360;
 
   for(const el of [teamScreenEl,modeScreenEl,matchTimeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl,secretInfoScreenEl]){
@@ -1319,7 +1319,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v142: vertical hazard lines only, evenly spaced.
+  // v143: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -1853,7 +1853,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v142: forward is always the attacking direction, never toward own goal.
+  // v143: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -2081,7 +2081,7 @@ function startMatch(opponentId){
   prepareMatch();
   hideMenu();
 
-  // v142: roster has finished initializing; now force boss graphics/stats.
+  // v143: roster has finished initializing; now force boss graphics/stats.
   forceRefreshPlayableBossTeams();
 }
 
@@ -2982,7 +2982,7 @@ function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
     if(ok) return;
   }
 
-  // v142: Peach homing belongs only to Momotaro's own special shot.
+  // v143: Peach homing belongs only to Momotaro's own special shot.
   if(gameMode==="momotaro" && (!p || p!==momotaroState.peachShooter)){
     momotaroState.peachShot=false;
     momotaroState.peachHitPost=false;
@@ -3133,7 +3133,7 @@ function attemptTrap(p, dt) {
 
   if(ball.developedPierce && !ball.owner) return false;
 
-  // v142: TRAP must not vacuum a loose ball from a distance.
+  // v143: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -3185,7 +3185,7 @@ function attemptTrap(p, dt) {
 
     if(input.trap || input.trapPressBuffer>0 || input.trapGraceTimer>0 ||
        (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v142: never stop/snap a ball unless it is genuinely at the feet.
+      // v143: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>50) return false;
 
       ball.owner=p;
@@ -3235,7 +3235,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v142: CPU also needs real contact before claiming/stopping the ball.
+      // v143: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -3726,7 +3726,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v142: any AI field player may shoot when the chance is clearly good.
+  // v143: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3841,7 +3841,7 @@ function aiWithBall(p,dt) {
 }
 
 function updateAI(p,dt) {
-  // v142: controlled player must never receive CPU boss decisions.
+  // v143: controlled player must never receive CPU boss decisions.
   if(p.controlled) return;
 
 
@@ -4130,7 +4130,7 @@ function blowThroughKeeper(p){
 }
 
 function updateGK(p,dt) {
-  // v142: 鬼蹴・剛 is absolute. No keeper save path may touch it.
+  // v143: 鬼蹴・剛 is absolute. No keeper save path may touch it.
   if(isOniHardPierce()){
     if(dist(p,ball)<70 && ball.z<80){
       blowThroughKeeper(p);
@@ -4138,7 +4138,7 @@ function updateGK(p,dt) {
     return;
   }
 
-  // v142: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
+  // v143: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
   if(ball.developedPierce && !ball.owner && ball.shot && ball.z<70 && dist(p,ball)<58){
     const n=norm(ball.vx,ball.vy);
     p.gkFall=Math.max(p.gkFall||0,1.20);
@@ -4437,7 +4437,7 @@ function applyPlayableBossTeamTraits(){
 function updatePhysics(dt) {
   if(ball.explosiveGKLock>0) ball.explosiveGKLock=Math.max(0,ball.explosiveGKLock-dt);
 
-  // v142: Momotaro boss super armor.
+  // v143: Momotaro boss super armor.
   for(const mp of [...teams.blue,...teams.red]){
     if(hasMomotaroSuperArmor(mp)){
       if("stun" in mp) mp.stun=0;
@@ -4484,7 +4484,7 @@ function updatePhysics(dt) {
     }
   }
 
-  // v142: in DEATHMATCH a loose ball must physically reach the feet.
+  // v143: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -4762,7 +4762,7 @@ function registerTimeStopDashTap(){
 
   const now=performance.now();
 
-  // v142: independent hidden-skill counter.
+  // v143: independent hidden-skill counter.
   // Seven taps can be entered within 2.5 seconds.
   timeStopDashTaps=timeStopDashTaps.filter(t=>now-t<=2500);
   timeStopDashTaps.push(now);
@@ -5160,6 +5160,176 @@ function drawSlideKit(p){
 }
 
 
+
+function drawOniSlidingCharacter(p){
+  ctx.save();
+  ctx.translate(p.x,p.y);
+
+  const dirX=Math.abs(p.vx)>8?p.vx:(p.dirX||1);
+  if(dirX<0) ctx.scale(-1,1);
+
+  // Legs: one extended, one bent.
+  ctx.strokeStyle="#17120d";
+  ctx.lineWidth=8;
+  ctx.lineCap="round";
+  ctx.beginPath();
+  ctx.moveTo(5,10);
+  ctx.lineTo(42,20);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(-3,10);
+  ctx.lineTo(-15,23);
+  ctx.lineTo(5,27);
+  ctx.stroke();
+
+  // Upright tiger-striped body.
+  ctx.save();
+  ctx.translate(-2,1);
+  ctx.rotate(-.05);
+
+  ctx.fillStyle="#f2c21b";
+  ctx.fillRect(-14,-20,28,29);
+  ctx.fillStyle="#111";
+  for(let sx=-11;sx<=11;sx+=8){
+    ctx.fillRect(sx,-20,4,29);
+  }
+
+  // Tiger shorts.
+  ctx.fillStyle="#f2c21b";
+  ctx.fillRect(-13,7,26,13);
+  ctx.fillStyle="#111";
+  ctx.fillRect(-10,7,4,13);
+  ctx.fillRect(1,7,4,13);
+  ctx.fillRect(9,7,3,13);
+
+  // Sleeves/arms.
+  ctx.fillStyle="#f2c21b";
+  ctx.fillRect(-20,-18,7,20);
+  ctx.fillRect(13,-18,7,20);
+  ctx.fillStyle="#111";
+  ctx.fillRect(-20,-10,7,4);
+  ctx.fillRect(13,-10,7,4);
+
+  ctx.strokeStyle=SKIN;
+  ctx.lineWidth=6;
+  ctx.beginPath();
+  ctx.moveTo(-17,-2);ctx.lineTo(-26,8);
+  ctx.moveTo(18,-2);ctx.lineTo(25,7);
+  ctx.stroke();
+
+  // Head + horns.
+  ctx.fillStyle=SKIN;
+  ctx.beginPath();
+  ctx.arc(0,-28,13,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.fillStyle="#111827";
+  ctx.beginPath();
+  ctx.arc(-4,-32,1.7,0,Math.PI*2);
+  ctx.arc(4,-32,1.7,0,Math.PI*2);
+  ctx.fill();
+
+  ctx.fillStyle="#e5e7eb";
+  ctx.beginPath();
+  ctx.moveTo(-8,-39);ctx.lineTo(-15,-51);ctx.lineTo(-4,-42);ctx.closePath();ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(8,-39);ctx.lineTo(15,-51);ctx.lineTo(4,-42);ctx.closePath();ctx.fill();
+
+  ctx.restore();
+
+  // Controlled marker.
+  if(p.controlled){
+    ctx.strokeStyle="#fde047";
+    ctx.lineWidth=4;
+    ctx.beginPath();ctx.arc(0,4,29,0,Math.PI*2);ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+function drawMomotaroSlidingCharacter(p){
+  ctx.save();
+  ctx.translate(p.x,p.y);
+  const dirX=Math.abs(p.vx)>8?p.vx:(p.dirX||1);
+  if(dirX<0) ctx.scale(-1,1);
+
+  // Momotaro himself: white Japanese-style sliding pose.
+  if(p.momotaroRole==="momotaro"){
+    ctx.strokeStyle="#4b4650";
+    ctx.lineWidth=7;
+    ctx.lineCap="round";
+    ctx.beginPath();
+    ctx.moveTo(5,11);ctx.lineTo(39,20);
+    ctx.moveTo(-3,11);ctx.lineTo(-14,22);ctx.lineTo(5,26);
+    ctx.stroke();
+
+    ctx.fillStyle="#f7f3e8";
+    ctx.beginPath();
+    ctx.moveTo(-15,-15);ctx.lineTo(15,-15);ctx.lineTo(18,14);ctx.lineTo(-18,14);ctx.closePath();ctx.fill();
+    ctx.strokeStyle="#c9bfae";ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(-8,-13);ctx.lineTo(4,2);ctx.lineTo(-3,14);ctx.stroke();
+    ctx.fillStyle="#d8d0c2";ctx.fillRect(-17,6,34,5);
+
+    ctx.fillStyle="#f2c7a5";
+    ctx.beginPath();ctx.arc(0,-27,12,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#27231f";
+    ctx.beginPath();ctx.arc(0,-35,7,Math.PI,0);ctx.fill();
+    ctx.fillRect(-8,-36,16,4);
+    ctx.beginPath();ctx.arc(0,-42,4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#fff";ctx.fillRect(-11,-34,22,3);
+    ctx.fillStyle="#d44";ctx.beginPath();ctx.arc(0,-33,2.5,0,Math.PI*2);ctx.fill();
+
+  }else if(p.momotaroRole==="dog"){
+    // Dog slides low on four legs, body tilted forward.
+    ctx.rotate(-.10);
+    ctx.fillStyle="#9a653c";
+    ctx.beginPath();ctx.ellipse(3,2,22,10,0,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(22,-3,10,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#704529";
+    ctx.fillRect(-10,7,5,14);
+    ctx.fillRect(7,7,5,14);
+    ctx.beginPath();ctx.moveTo(17,-10);ctx.lineTo(15,-22);ctx.lineTo(24,-12);ctx.fill();
+    ctx.beginPath();ctx.moveTo(26,-9);ctx.lineTo(31,-19);ctx.lineTo(31,-6);ctx.fill();
+    ctx.strokeStyle="#704529";ctx.lineWidth=5;
+    ctx.beginPath();ctx.moveTo(-18,0);ctx.quadraticCurveTo(-31,-7,-26,-18);ctx.stroke();
+
+  }else if(p.momotaroRole==="monkey"){
+    ctx.rotate(-.08);
+    ctx.fillStyle="#7b5236";
+    ctx.beginPath();ctx.ellipse(3,2,21,10,0,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(21,-3,10,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#d4a77c";ctx.beginPath();ctx.ellipse(24,-1,7,6,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#65412c";
+    ctx.fillRect(-9,7,5,13);ctx.fillRect(8,7,5,13);
+    ctx.strokeStyle="#65412c";ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(-18,0);ctx.bezierCurveTo(-33,-4,-31,-23,-18,-18);ctx.stroke();
+
+  }else if(p.momotaroRole==="pheasant"){
+    // Bird swoops low rather than human-style sliding.
+    ctx.rotate(-.12);
+    ctx.fillStyle="#34865a";
+    ctx.beginPath();ctx.ellipse(2,1,20,10,-.08,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#246a47";
+    ctx.beginPath();ctx.ellipse(-2,0,13,6,.2,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#2f925e";ctx.beginPath();ctx.arc(20,-5,8,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#e1b23f";
+    ctx.beginPath();ctx.moveTo(27,-6);ctx.lineTo(36,-3);ctx.lineTo(27,0);ctx.closePath();ctx.fill();
+    ctx.strokeStyle="#28734e";ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(-16,0);ctx.lineTo(-37,-7);ctx.stroke();
+    ctx.strokeStyle="#c45a47";ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(-15,4);ctx.lineTo(-34,12);ctx.stroke();
+  }
+
+  if(p.controlled){
+    ctx.strokeStyle="#fde047";
+    ctx.lineWidth=4;
+    ctx.beginPath();ctx.arc(0,4,29,0,Math.PI*2);ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
 function drawMomotaroCharacter(p){
   if(!p.momotaroRole) return false;
 
@@ -5168,6 +5338,11 @@ function drawMomotaroCharacter(p){
 
   const facing=(p.dirX||0)>=0?1:-1;
   ctx.scale(facing,1);
+
+  const moving=Math.hypot(p.vx,p.vy)>25;
+  const runSwing=moving?Math.sin(p.runPhase)*5:0;
+  const bob=moving?Math.abs(Math.sin(p.runPhase))*2:0;
+  ctx.translate(0,-bob);
 
   if(p.momotaroRole==="momotaro"){
     // White, simple Japanese-style outfit.
@@ -5187,8 +5362,14 @@ function drawMomotaroCharacter(p){
     // Headband
     ctx.fillStyle="#fff";ctx.fillRect(-11,-34,22,3);
     ctx.fillStyle="#d44";ctx.beginPath();ctx.arc(0,-33,2.5,0,Math.PI*2);ctx.fill();
-    // Legs
-    ctx.fillStyle="#4b4650";ctx.fillRect(-12,15,8,10);ctx.fillRect(4,15,8,10);
+    // Animated legs
+    ctx.strokeStyle="#4b4650";
+    ctx.lineWidth=7;
+    ctx.lineCap="round";
+    ctx.beginPath();
+    ctx.moveTo(-7,14);ctx.lineTo(-7-runSwing,27);
+    ctx.moveTo(7,14);ctx.lineTo(7+runSwing,27);
+    ctx.stroke();
     ctx.restore();
     return true;
   }
@@ -5201,7 +5382,8 @@ function drawMomotaroCharacter(p){
     ctx.fillStyle="#704529";
     ctx.beginPath();ctx.moveTo(14,-12);ctx.lineTo(12,-24);ctx.lineTo(21,-14);ctx.fill();
     ctx.beginPath();ctx.moveTo(23,-11);ctx.lineTo(29,-21);ctx.lineTo(29,-8);ctx.fill();
-    ctx.fillRect(-13,8,5,15);ctx.fillRect(7,8,5,15);
+    ctx.fillRect(-13-runSwing*.35,8,5,15);
+    ctx.fillRect(7+runSwing*.35,8,5,15);
     ctx.strokeStyle="#704529";ctx.lineWidth=5;
     ctx.beginPath();ctx.moveTo(-18,0);ctx.quadraticCurveTo(-29,-8,-24,-18);ctx.stroke();
     ctx.fillStyle="#171717";ctx.beginPath();ctx.arc(23,-6,2,0,Math.PI*2);ctx.fill();
@@ -5214,7 +5396,9 @@ function drawMomotaroCharacter(p){
     ctx.beginPath();ctx.ellipse(0,2,19,11,0,0,Math.PI*2);ctx.fill();
     ctx.beginPath();ctx.arc(17,-5,10,0,Math.PI*2);ctx.fill();
     ctx.fillStyle="#d4a77c";ctx.beginPath();ctx.ellipse(20,-3,7,6,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle="#65412c";ctx.fillRect(-12,8,5,14);ctx.fillRect(7,8,5,14);
+    ctx.fillStyle="#65412c";
+    ctx.fillRect(-12-runSwing*.35,8,5,14);
+    ctx.fillRect(7+runSwing*.35,8,5,14);
     ctx.strokeStyle="#65412c";ctx.lineWidth=4;
     ctx.beginPath();ctx.moveTo(-17,0);ctx.bezierCurveTo(-31,-4,-30,-22,-17,-18);ctx.stroke();
     ctx.fillStyle="#171717";ctx.beginPath();ctx.arc(21,-7,2,0,Math.PI*2);ctx.fill();
@@ -5226,7 +5410,9 @@ function drawMomotaroCharacter(p){
     ctx.fillStyle="#34865a";
     ctx.beginPath();ctx.ellipse(0,1,18,11,-.1,0,Math.PI*2);ctx.fill();
     ctx.fillStyle="#246a47";
-    ctx.beginPath();ctx.ellipse(-3,2,12,7,.25,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(-3,2-runSwing*.18,12,7,.25,0,Math.PI*2);
+    ctx.fill();
     ctx.fillStyle="#2f925e";ctx.beginPath();ctx.arc(16,-6,8,0,Math.PI*2);ctx.fill();
     ctx.fillStyle="#e1b23f";
     ctx.beginPath();ctx.moveTo(23,-7);ctx.lineTo(33,-3);ctx.lineTo(23,-1);ctx.closePath();ctx.fill();
@@ -5248,12 +5434,7 @@ function drawMomotaroCharacter(p){
 
 function drawPlayer(p) {
 
-  // v142: boss characters keep their dedicated graphics even while sliding/staggered.
-  if(p.momotaroRole && !p.momotaroGK){
-    drawMomotaroCharacter(p);
-    return;
-  }
-  // v142 visual fallback: infer playable boss graphics from the side's selected team.
+  // v143 visual fallback: infer playable boss graphics from the side's selected team.
   const sideBossKind=bossKindForTeamId(p.team==="blue"?selectedTeamId:opponentTeamId);
   if(sideBossKind==="oni" && !p.oni){
     p.oni=true;
@@ -5267,6 +5448,19 @@ function drawPlayer(p) {
   if(sideBossKind==="momotaro" && p.role==="gk"){
     p.oni=true;
     p.momotaroGK=true;
+  }
+
+
+  // v143: dedicated sliding graphics for boss characters.
+  if(p.slide>0){
+    if(p.momotaroRole && !p.momotaroGK){
+      drawMomotaroSlidingCharacter(p);
+      return;
+    }
+    if(p.oni){
+      drawOniSlidingCharacter(p);
+      return;
+    }
   }
 
   // Momotaro's companions use dedicated silhouettes; Oni GK keeps the existing Oni graphic.
@@ -5493,7 +5687,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v142: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v143: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -6918,7 +7112,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v142";
+  if(v) v.textContent="v143";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v142";
+  if(b) b.textContent="v143";
 });
