@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v132";
+const GAME_VERSION="v133";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -254,7 +254,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v132: selected team + 3 random opponents = 4-team single round robin.
+  // v133: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -473,7 +473,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  // v132: prevent the same touch from falling through into the newly shown screen.
+  // v133: prevent the same touch from falling through into the newly shown screen.
   menuTransitionLockUntil=performance.now()+360;
 
   for(const el of [teamScreenEl,modeScreenEl,matchTimeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl]){
@@ -1261,7 +1261,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v132: vertical hazard lines only, evenly spaced.
+  // v133: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -1752,7 +1752,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v132: forward is always the attacking direction, never toward own goal.
+  // v133: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -2832,7 +2832,7 @@ function kickNearbyLooseBall(p, kind="pass") {
 
 
 function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
-  // v132: Peach homing belongs only to Momotaro's own special shot.
+  // v133: Peach homing belongs only to Momotaro's own special shot.
   if(gameMode==="momotaro" && (!p || p!==momotaroState.peachShooter)){
     momotaroState.peachShot=false;
     momotaroState.peachHitPost=false;
@@ -2983,7 +2983,7 @@ function attemptTrap(p, dt) {
 
   if(ball.developedPierce && !ball.owner) return false;
 
-  // v132: TRAP must not vacuum a loose ball from a distance.
+  // v133: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -3035,7 +3035,7 @@ function attemptTrap(p, dt) {
 
     if(input.trap || input.trapPressBuffer>0 || input.trapGraceTimer>0 ||
        (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v132: never stop/snap a ball unless it is genuinely at the feet.
+      // v133: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>50) return false;
 
       ball.owner=p;
@@ -3085,7 +3085,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v132: CPU also needs real contact before claiming/stopping the ball.
+      // v133: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -3576,7 +3576,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v132: any AI field player may shoot when the chance is clearly good.
+  // v133: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3958,7 +3958,7 @@ function blowThroughKeeper(p){
 }
 
 function updateGK(p,dt) {
-  // v132: 鬼蹴・剛 is absolute. No keeper save path may touch it.
+  // v133: 鬼蹴・剛 is absolute. No keeper save path may touch it.
   if(isOniHardPierce()){
     if(dist(p,ball)<70 && ball.z<80){
       blowThroughKeeper(p);
@@ -3966,7 +3966,7 @@ function updateGK(p,dt) {
     return;
   }
 
-  // v132: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
+  // v133: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
   if(ball.developedPierce && !ball.owner && ball.shot && ball.z<70 && dist(p,ball)<58){
     const n=norm(ball.vx,ball.vy);
     p.gkFall=Math.max(p.gkFall||0,1.20);
@@ -4189,7 +4189,7 @@ function updatePhysics(dt) {
     }
   }
 
-  // v132: in DEATHMATCH a loose ball must physically reach the feet.
+  // v133: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -4466,7 +4466,7 @@ function registerTimeStopDashTap(){
 
   const now=performance.now();
 
-  // v132: independent hidden-skill counter.
+  // v133: independent hidden-skill counter.
   // Seven taps can be entered within 2.5 seconds.
   timeStopDashTaps=timeStopDashTaps.filter(t=>now-t<=2500);
   timeStopDashTaps.push(now);
@@ -4863,7 +4863,100 @@ function drawSlideKit(p){
   }
 }
 
+
+function drawMomotaroCharacter(p){
+  if(!p.momotaroRole) return false;
+
+  ctx.save();
+  ctx.translate(p.x,p.y);
+
+  const facing=(p.dirX||0)>=0?1:-1;
+  ctx.scale(facing,1);
+
+  if(p.momotaroRole==="momotaro"){
+    // White, simple Japanese-style outfit.
+    ctx.fillStyle="#f7f3e8";
+    ctx.beginPath();
+    ctx.moveTo(-15,-15);ctx.lineTo(15,-15);ctx.lineTo(18,15);ctx.lineTo(-18,15);ctx.closePath();ctx.fill();
+    ctx.strokeStyle="#c9bfae";ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(-8,-13);ctx.lineTo(4,2);ctx.lineTo(-3,15);ctx.stroke();
+    ctx.fillStyle="#d8d0c2";ctx.fillRect(-17,7,34,5);
+    ctx.fillStyle="#f2c7a5";
+    ctx.beginPath();ctx.arc(0,-27,12,0,Math.PI*2);ctx.fill();
+    // Hair/topknot
+    ctx.fillStyle="#27231f";
+    ctx.beginPath();ctx.arc(0,-35,7,Math.PI,0);ctx.fill();
+    ctx.fillRect(-8,-36,16,4);
+    ctx.beginPath();ctx.arc(0,-42,4,0,Math.PI*2);ctx.fill();
+    // Headband
+    ctx.fillStyle="#fff";ctx.fillRect(-11,-34,22,3);
+    ctx.fillStyle="#d44";ctx.beginPath();ctx.arc(0,-33,2.5,0,Math.PI*2);ctx.fill();
+    // Legs
+    ctx.fillStyle="#4b4650";ctx.fillRect(-12,15,8,10);ctx.fillRect(4,15,8,10);
+    ctx.restore();
+    return true;
+  }
+
+  if(p.momotaroRole==="dog"){
+    // Brown quadruped dog.
+    ctx.fillStyle="#9a653c";
+    ctx.beginPath();ctx.ellipse(0,2,20,11,0,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(18,-5,10,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#704529";
+    ctx.beginPath();ctx.moveTo(14,-12);ctx.lineTo(12,-24);ctx.lineTo(21,-14);ctx.fill();
+    ctx.beginPath();ctx.moveTo(23,-11);ctx.lineTo(29,-21);ctx.lineTo(29,-8);ctx.fill();
+    ctx.fillRect(-13,8,5,15);ctx.fillRect(7,8,5,15);
+    ctx.strokeStyle="#704529";ctx.lineWidth=5;
+    ctx.beginPath();ctx.moveTo(-18,0);ctx.quadraticCurveTo(-29,-8,-24,-18);ctx.stroke();
+    ctx.fillStyle="#171717";ctx.beginPath();ctx.arc(23,-6,2,0,Math.PI*2);ctx.fill();
+    ctx.restore();return true;
+  }
+
+  if(p.momotaroRole==="monkey"){
+    // Brown quadruped monkey with curled tail.
+    ctx.fillStyle="#7b5236";
+    ctx.beginPath();ctx.ellipse(0,2,19,11,0,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.arc(17,-5,10,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#d4a77c";ctx.beginPath();ctx.ellipse(20,-3,7,6,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#65412c";ctx.fillRect(-12,8,5,14);ctx.fillRect(7,8,5,14);
+    ctx.strokeStyle="#65412c";ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(-17,0);ctx.bezierCurveTo(-31,-4,-30,-22,-17,-18);ctx.stroke();
+    ctx.fillStyle="#171717";ctx.beginPath();ctx.arc(21,-7,2,0,Math.PI*2);ctx.fill();
+    ctx.restore();return true;
+  }
+
+  if(p.momotaroRole==="pheasant"){
+    // Fully bird-shaped green pheasant.
+    ctx.fillStyle="#34865a";
+    ctx.beginPath();ctx.ellipse(0,1,18,11,-.1,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#246a47";
+    ctx.beginPath();ctx.ellipse(-3,2,12,7,.25,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#2f925e";ctx.beginPath();ctx.arc(16,-6,8,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle="#e1b23f";
+    ctx.beginPath();ctx.moveTo(23,-7);ctx.lineTo(33,-3);ctx.lineTo(23,-1);ctx.closePath();ctx.fill();
+    // long tail feathers
+    ctx.strokeStyle="#28734e";ctx.lineWidth=4;
+    ctx.beginPath();ctx.moveTo(-15,1);ctx.lineTo(-34,-7);ctx.stroke();
+    ctx.strokeStyle="#c45a47";ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(-14,5);ctx.lineTo(-32,13);ctx.stroke();
+    // legs
+    ctx.strokeStyle="#b98535";ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(3,10);ctx.lineTo(2,20);ctx.moveTo(10,9);ctx.lineTo(11,19);ctx.stroke();
+    ctx.fillStyle="#111";ctx.beginPath();ctx.arc(18,-8,1.5,0,Math.PI*2);ctx.fill();
+    ctx.restore();return true;
+  }
+
+  ctx.restore();
+  return false;
+}
+
 function drawPlayer(p) {
+  // Momotaro's companions use dedicated silhouettes; Oni GK keeps the existing Oni graphic.
+  if(p.momotaroRole && !p.momotaroGK){
+    drawMomotaroCharacter(p);
+    return;
+  }
+
   if(gamePhase==="practice" && !p.practiceActive) return;
 
   if(p.role==="gk" && p.gkFall>0){
@@ -5082,7 +5175,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v132: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v133: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -6498,7 +6591,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v132";
+  if(v) v.textContent="v133";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v132";
+  if(b) b.textContent="v133";
 });
