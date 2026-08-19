@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v128";
+const GAME_VERSION="v129";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -117,8 +117,10 @@ let oniBattleState={
   curveShots:[],
   pierceUsed:false,
   curveUsed:false,
+  blastUsed:false,
   forcePierceAt:54,
-  forceCurveAt:45
+  forceCurveAt:45,
+  forceBlastAt:36
 };
 let useTrainedTeam=false;
 let pendingSelectedTeamId=null;
@@ -240,7 +242,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v128: selected team + 3 random opponents = 4-team single round robin.
+  // v129: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -392,6 +394,8 @@ function cpuTryNutmeg(p){
   ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
   ball.power=480;
   ball.touchGrace=.15;
   ball.protectedTeam=p.team;
@@ -445,7 +449,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  // v128: prevent the same touch from falling through into the newly shown screen.
+  // v129: prevent the same touch from falling through into the newly shown screen.
   menuTransitionLockUntil=performance.now()+360;
 
   for(const el of [teamScreenEl,modeScreenEl,matchTimeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl]){
@@ -563,8 +567,10 @@ function startOniBattle(){
   oniBattleState.curveShots=[];
   oniBattleState.pierceUsed=false;
   oniBattleState.curveUsed=false;
+  oniBattleState.blastUsed=false;
   oniBattleState.forcePierceAt=54;
   oniBattleState.forceCurveAt=45;
+  oniBattleState.forceBlastAt=36;
 
   // Use FS.T slot as a base opponent if available, but alter profile at runtime.
   // If locked/absent, fallback to strongest ordinary team ID.
@@ -627,7 +633,7 @@ function updateOniBattle(dt){
     if(s.life<=0){ s.active=false; continue; }
 
     // Rotate velocity a little each frame for dramatic bend.
-    const ang=s.curveDir*dt*2.45;
+    const ang=s.curveDir*dt*3.35;
     const vx=ball.vx, vy=ball.vy;
     ball.vx=vx*Math.cos(ang)-vy*Math.sin(ang);
     ball.vy=vx*Math.sin(ang)+vy*Math.cos(ang);
@@ -651,29 +657,51 @@ function oniShootAtPlayerGoal(p,type="normal"){
   p.dirX=n.x;
   p.dirY=n.y;
 
-  const speed=type==="pierce" ? 1120 : (type==="curve" ? 920 : rand(780,930));
+  const speed=
+    type==="pierce" ? 1180 :
+    type==="curve" ? 980 :
+    type==="blast" ? 1000 :
+    rand(820,960);
   kickBall(p,n.x,n.y,speed,0,true,null);
 
   if(type==="pierce"){
+    // 鬼蹴・剛: absolute pierce. GK save logic must not stop it.
     ball.developedPierce=true;
     ball.developedPierceShooter=p;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
     oniBattleState.pierceUsed=true;
     showMessage("鬼蹴・剛！",.35);
+
   }else if(type==="curve"){
-    // Curve shot is deliberately NOT forced to pierce; it wins by trajectory.
+    // 鬼蹴・柔: starts bending immediately and keeps bending for longer.
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
     oniBattleState.curveUsed=true;
     oniBattleState.curveShots.push({
       active:true,
       ballRef:ball,
-      life:1.35,
+      life:1.85,
       curveDir:(targetY<H/2)?1:-1
     });
     showMessage("鬼蹴・柔！",.35);
+
+  }else if(type==="blast"){
+    // 鬼蹴・爆: one explosion on first impact, then the special effect is consumed.
+    ball.developedPierce=false;
+    ball.developedPierceShooter=null;
+    ball.oniBlastShot=true;
+    ball.oniBlastConsumed=false;
+    oniBattleState.blastUsed=true;
+    showMessage("鬼蹴・爆！",.35);
+
   }else{
-    // Boss normal shots are still heavy; about half are piercing.
-    if(Math.random()<.55){
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
+    // Boss normal shots are still heavy; many are piercing.
+    if(Math.random()<.60){
       ball.developedPierce=true;
       ball.developedPierceShooter=p;
     }
@@ -1037,7 +1065,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v128: vertical hazard lines only, evenly spaced.
+  // v129: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -1528,7 +1556,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v128: forward is always the attacking direction, never toward own goal.
+  // v129: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -2062,6 +2090,8 @@ function setupPracticePlayers(type){
   ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
   ball.touchGrace=.12;
 }
 
@@ -2216,6 +2246,8 @@ const ball = {
   shot:false,
   developedPierce:false,
   developedPierceShooter:null,
+  oniBlastShot:false,
+  oniBlastConsumed:false,
   power:0,
   touchGrace:0,
   protectedTeam:null,
@@ -2268,7 +2300,9 @@ function resetKickoff(team="blue") {
   ball.y=starter.y;
   ball.z=0; ball.vx=ball.vy=ball.vz=0; ball.shot=false;
     ball.developedPierce=false;
-    ball.developedPierceShooter=null; ball.passTarget=null;
+    ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false; ball.passTarget=null;
   ball.touchGrace=.18; ball.protectedTeam=starter.team;
   ball.dashProtectTimer=0; ball.dashProtectTeam=null;
   ball.nutmegTimer=0; ball.nutmegTeam=null; ball.nutmegTarget=null;
@@ -2505,6 +2539,8 @@ function kickNearbyLooseBall(p, kind="pass") {
     ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
     ball.power=380;
 
     if(p.controlled) input.postKickNoAutoTrap=.50;
@@ -2689,7 +2725,7 @@ function trapWindowFor(p) {
 function attemptTrap(p, dt) {
   if(ball.developedPierce && !ball.owner) return false;
 
-  // v128: TRAP must not vacuum a loose ball from a distance.
+  // v129: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -2741,7 +2777,7 @@ function attemptTrap(p, dt) {
 
     if(input.trap || input.trapPressBuffer>0 || input.trapGraceTimer>0 ||
        (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v128: never stop/snap a ball unless it is genuinely at the feet.
+      // v129: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>50) return false;
 
       ball.owner=p;
@@ -2791,7 +2827,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v128: CPU also needs real contact before claiming/stopping the ball.
+      // v129: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -3282,7 +3318,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v128: any AI field player may shoot when the chance is clearly good.
+  // v129: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3409,15 +3445,20 @@ function updateAI(p,dt) {
     if(!oniBattleState.curveUsed && matchLeft<=oniBattleState.forceCurveAt && p.cooldown<=0){
       if(oniShootAtPlayerGoal(p,"curve")) return;
     }
+    if(!oniBattleState.blastUsed && matchLeft<=oniBattleState.forceBlastAt && p.cooldown<=0){
+      if(oniShootAtPlayerGoal(p,"blast")) return;
+    }
 
     // Relentless normal shooting. From almost anywhere, shoot rather than
     // dribble forever. Probability is high enough to feel boss-like.
-    if(goalDist<900 && p.cooldown<=0 && Math.random()<dt*10.5){
+    if(goalDist<900 && p.cooldown<=0 && Math.random()<dt*13.0){
       const r=Math.random();
-      if(r<.22){
+      if(r<.18){
         if(oniShootAtPlayerGoal(p,"curve")) return;
-      }else if(r<.52){
+      }else if(r<.42){
         if(oniShootAtPlayerGoal(p,"pierce")) return;
+      }else if(r<.58){
+        if(oniShootAtPlayerGoal(p,"blast")) return;
       }else{
         if(oniShootAtPlayerGoal(p,"normal")) return;
       }
@@ -3559,6 +3600,8 @@ function fallenGKParry(p){
   ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
   ball.lastTouch=p;
   ball.touchGrace=.12;
   showMessage("DESPERATE SAVE!",.34);
@@ -3593,6 +3636,8 @@ function gkTimedTrickSave(p){
   ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
   ball.lastTouch=p;
   ball.touchGrace=.14;
 
@@ -3610,6 +3655,19 @@ function gkTimedTrickSave(p){
 }
 
 function updateGK(p,dt) {
+  // v129: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
+  if(ball.developedPierce && !ball.owner && ball.shot && ball.z<70 && dist(p,ball)<58){
+    const n=norm(ball.vx,ball.vy);
+    p.gkFall=Math.max(p.gkFall||0,1.20);
+    p.stagger=Math.max(p.stagger||0,1.0);
+    p.vx=n.x*520;
+    p.vy=n.y*240;
+    ball.owner=null;
+    ball.vx=n.x*Math.max(900,Math.hypot(ball.vx,ball.vy)*.99);
+    ball.vy=n.y*Math.max(900,Math.hypot(ball.vx,ball.vy)*.99);
+    return;
+  }
+
   if(gameMode==="deathmatch-explosive") explosiveGKImpact(p);
 
   if(nutmegProtectedAgainst(p) || trickProtectedAgainst(p)){
@@ -3662,6 +3720,8 @@ function updateGK(p,dt) {
     ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
     ball.lastTouch=p;
     return;
   }
@@ -3674,6 +3734,8 @@ function updateGK(p,dt) {
       ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
       showMessage("GK SUPER CATCH!",.7);
       return;
     }
@@ -3692,6 +3754,8 @@ function updateGK(p,dt) {
       ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
       ball.lastTouch=p;
       if(ball.power>590) p.gkFall=.42;
       return;
@@ -3713,6 +3777,8 @@ function updateGK(p,dt) {
       ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
       ball.lastTouch=p;
       if(ball.power>590) p.gkFall=.42;
     }
@@ -3728,7 +3794,42 @@ function updateGK(p,dt) {
   }
 }
 
+
+function triggerOniBlastOnce(x=ball.x,y=ball.y){
+  if(gameMode!=="oni" || !ball.oniBlastShot || ball.oniBlastConsumed) return false;
+
+  ball.oniBlastConsumed=true;
+  ball.oniBlastShot=false;
+
+  // Use the same kind of radial blast as explosive-ball mode.
+  blastPlayersAt(x,y,115,680,.70);
+
+  // Once it explodes, the special property is gone.
+  // The ball itself remains in play as a normal ball.
+  ball.developedPierce=false;
+  ball.developedPierceShooter=null;
+
+  const n=norm(ball.vx,ball.vy);
+  const speed=Math.hypot(ball.vx,ball.vy);
+  ball.owner=null;
+  ball.vx=n.x*Math.max(260,speed*.58);
+  ball.vy=n.y*Math.max(260,speed*.58);
+  ball.vz=Math.max(ball.vz,65);
+  return true;
+}
+
 function updatePhysics(dt) {
+
+  if(gameMode==="oni" && ball.oniBlastShot && !ball.oniBlastConsumed && !ball.owner){
+    for(const q of [...teams.blue,...teams.red]){
+      if(q===ball.lastTouch) continue;
+      if(dist(q,ball)<27){
+        triggerOniBlastOnce(ball.x,ball.y);
+        break;
+      }
+    }
+  }
+
   // Physical +7 hidden ability: super armor against special-match hazards.
   if(gameMode==="deathmatch" || gameMode==="deathmatch-explosive" || gameMode==="deathmatch-dragon"){
     for(const sp of teams.blue){
@@ -3744,7 +3845,7 @@ function updatePhysics(dt) {
     }
   }
 
-  // v128: in DEATHMATCH a loose ball must physically reach the feet.
+  // v129: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -3940,6 +4041,21 @@ for(const p of [...teams.blue,...teams.red]) {
   handleWallsAndGoals();
 }
 function handleWallsAndGoals() {
+
+  if(gameMode==="oni" && ball.oniBlastShot && !ball.oniBlastConsumed && !ball.owner){
+    const inGoalMouth=ball.y>(H/2-GOAL_H/2)+BALL_R && ball.y<(H/2+GOAL_H/2)-BALL_R;
+    const hitSideWall=!inGoalMouth && (
+      ball.x<=COURT.x+BALL_R+2 ||
+      ball.x>=COURT.x+COURT.w-BALL_R-2
+    );
+    const hitTopBottom=
+      ball.y<=COURT.y+BALL_R+2 ||
+      ball.y>=COURT.y+COURT.h-BALL_R-2;
+    if(hitSideWall || hitTopBottom){
+      triggerOniBlastOnce(ball.x,ball.y);
+    }
+  }
+
   const goalTop=H/2-GOAL_H/2, goalBot=H/2+GOAL_H/2;
 
   if(ball.y<COURT.y+BALL_R){ball.y=COURT.y+BALL_R;ball.vy=Math.abs(ball.vy)*.72;}
@@ -3965,6 +4081,8 @@ function goal(who) {
   ball.owner=null;ball.vx=ball.vy=ball.vz=0;ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
 }
 
 
@@ -4004,7 +4122,7 @@ function registerTimeStopDashTap(){
 
   const now=performance.now();
 
-  // v128: independent hidden-skill counter.
+  // v129: independent hidden-skill counter.
   // Seven taps can be entered within 2.5 seconds.
   timeStopDashTaps=timeStopDashTaps.filter(t=>now-t<=2500);
   timeStopDashTaps.push(now);
@@ -4591,7 +4709,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v128: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v129: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -5127,6 +5245,8 @@ function tryNutmeg(attacker){
   ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
   ball.power=500;
   ball.touchGrace=.16;
   ball.protectedTeam=attacker.team;
@@ -5198,6 +5318,8 @@ function awardFreeKick(fouledPlayer, offender){
   ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
   ball.passTarget=null;
   ball.passFrom=null;
 
@@ -5235,6 +5357,8 @@ function resumeFreeKick(){
   ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
+    ball.oniBlastShot=false;
+    ball.oniBlastConsumed=false;
   ball.passTarget=null;
   ball.passFrom=null;
   ball.lastTouch=fouledPlayer;
@@ -5955,7 +6079,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v128";
+  if(v) v.textContent="v129";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v128";
+  if(b) b.textContent="v129";
 });
