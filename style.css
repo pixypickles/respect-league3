@@ -846,3 +846,30 @@ body {
   border-color:#d94a4a!important;
   color:#7a1720!important;
 }
+
+/* v134 secret hints */
+#modeScreen .secret-info-btn{
+  order:45;
+  min-width:92px;
+  max-width:120px;
+  font-size:1.4em;
+  background:linear-gradient(180deg,#4b5563,#1f2937)!important;
+  border-color:#9ca3af!important;
+}
+#secretInfoScreen .secret-info-box{
+  max-width:860px;
+  margin:18px auto 26px;
+  padding:24px 28px;
+  border:2px solid rgba(148,163,184,.45);
+  border-radius:22px;
+  background:rgba(15,23,42,.62);
+  text-align:left;
+  line-height:1.8;
+  font-size:1.05rem;
+}
+#secretInfoScreen .secret-info-box p{
+  margin:0 0 16px;
+}
+#secretInfoScreen .secret-info-box p:last-child{
+  margin-bottom:0;
+}
