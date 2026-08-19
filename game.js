@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v130";
+const GAME_VERSION="v131";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -40,6 +40,7 @@ const freeMatchBtnEl = document.getElementById("freeMatchBtn");
 const practiceBtnEl = document.getElementById("practiceBtn");
 const developmentBtnEl = document.getElementById("developmentBtn");
 const oniBattleBtnEl = document.getElementById("oniBattleBtn");
+const momotaroBattleBtnEl = document.getElementById("momotaroBattleBtn");
 const matchTimeScreenEl = document.getElementById("matchTimeScreen");
 const matchTimeModeNameEl = document.getElementById("matchTimeModeName");
 const time90BtnEl = document.getElementById("time90Btn");
@@ -97,6 +98,17 @@ const TEAM_DEFS = [
   {id:"manchester-p", name:"漫チェスターP", kit:"manchester-p", primary:"#081a3a", secondary:"#081a3a", sleeve:"#081a3a"},
   {id:"fst", name:"FS.T", kit:"fst", primary:"#7c3aed", secondary:"#5b21b6", sleeve:"#6d28d9"}
 ];
+function ensureUnlockedBossTeams(){
+  if(!bossTeamsUnlocked()) return;
+  const base=TEAM_DEFS.find(t=>t.id==="fst") || TEAM_DEFS[0];
+  if(!TEAM_DEFS.some(t=>t.id==="oni_team")){
+    TEAM_DEFS.push({...base,id:"oni_team",name:"鬼",color:"#f2c21b",secondary:"#111111",bossTeam:"oni"});
+  }
+  if(!TEAM_DEFS.some(t=>t.id==="momotaro_team")){
+    TEAM_DEFS.push({...base,id:"momotaro_team",name:"桃太郎",color:"#ffffff",secondary:"#d22",bossTeam:"momotaro"});
+  }
+}
+
 
 let selectedTeamId="blizzard";
 let opponentPickLockUntil=0;
@@ -242,7 +254,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v130: selected team + 3 random opponents = 4-team single round robin.
+  // v131: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -449,7 +461,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  // v130: prevent the same touch from falling through into the newly shown screen.
+  // v131: prevent the same touch from falling through into the newly shown screen.
   menuTransitionLockUntil=performance.now()+360;
 
   for(const el of [teamScreenEl,modeScreenEl,matchTimeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl]){
@@ -495,6 +507,7 @@ function chooseTeamVersion(teamId){
   selectedTeamNameEl.textContent=teamDef(teamId).name;
   refreshLeagueButton();
   refreshOniBattleButton();
+  refreshMomotaroBattleButton();
 
   if(hasDevelopmentStats(teamId)){
     pendingSelectedTeamId=teamId;
@@ -535,6 +548,24 @@ function confirmMatchTime(seconds){
 }
 
 
+
+function oniVictoryKey(){ return `oniVictory:${selectedTeamId}`; }
+function momotaroVictoryKey(){ return `momotaroVictory:${selectedTeamId}`; }
+function hasBeatenOni(){ return localStorage.getItem(oniVictoryKey())==="1"; }
+function hasBeatenMomotaro(){ return localStorage.getItem(momotaroVictoryKey())==="1"; }
+
+function momotaroBattleUnlocked(){
+  const s=developmentStatsFor(selectedTeamId);
+  return (s.speed||0)>=7 && (s.kick||0)>=7 && (s.physical||0)>=7 && hasBeatenOni();
+}
+function refreshMomotaroBattleButton(){
+  if(!momotaroBattleBtnEl) return;
+  momotaroBattleBtnEl.style.display=momotaroBattleUnlocked()?"":"none";
+}
+function bossTeamsUnlocked(){
+  return hasBeatenMomotaro();
+}
+
 function oniBattleUnlocked(){
   const s=developmentStatsFor(selectedTeamId);
   return Math.max(s.speed||0,s.kick||0,s.physical||0)>=7;
@@ -557,6 +588,125 @@ function awardOniVictoryReward(){
   developmentState.bonusPoints=(developmentState.bonusPoints||0)+2;
   developmentState.pendingBonus=true;
   showMessage("鬼撃破！ 育成ポイント +2",1.1);
+}
+
+
+let momotaroState={
+  peachShot:false,
+  peachSpin:0,
+  peachTargetPostY:0,
+  peachHitPost:false,
+  peachShooter:null
+};
+
+function startMomotaroBattle(){
+  gameMode="momotaro";
+  selectedMatchSeconds=60;
+  momotaroState.peachShot=false;
+  momotaroState.peachSpin=0;
+  momotaroState.peachHitPost=false;
+  momotaroState.peachShooter=null;
+
+  const opponent=(TEAM_DEFS.find(t=>t.id==="fst")?.id)||TEAM_DEFS[TEAM_DEFS.length-1].id;
+  startMatch(opponent);
+
+  // Red side: Momotaro + dog/monkey/pheasant + Oni keeper.
+  const field=teams.red.filter(p=>p.role!=="gk");
+  const gk=teams.red.find(p=>p.role==="gk");
+
+  field.forEach((p,i)=>{
+    p.momotaroRole=i===0?"momotaro":(["dog","monkey","pheasant"][i-1]||"dog");
+    p.momotaro=true;
+    p.speed*=i===0?1.65:2.25; // ~10 and ~15 relative boss values
+    p.devKickMult=i===0?2.0:1.25;
+    p.devPhysical=i===0?10:8;
+  });
+  if(gk){
+    gk.oni=true;
+    gk.momotaroGK=true;
+    gk.speed*=1.45;
+    gk.devPhysical=10;
+  }
+}
+
+function momotaroPlayer(){
+  return teams.red.find(p=>p.momotaroRole==="momotaro")||null;
+}
+
+function firePeachPostShot(p){
+  if(gameMode!=="momotaro" || !p || ball.owner!==p) return false;
+
+  const goalX=COURT.x-18;
+  // Choose upper/lower post. Aim exactly at it; physics below redirects inward on impact.
+  const postY=H/2+(Math.random()<.5?-1:1)*(GOAL_H/2-5);
+  const n=norm(goalX-p.x,postY-p.y);
+
+  p.dirX=n.x;p.dirY=n.y;
+  kickBall(p,n.x,n.y,1220,0,true,null);
+
+  momotaroState.peachShot=true;
+  momotaroState.peachSpin=0;
+  momotaroState.peachTargetPostY=postY;
+  momotaroState.peachHitPost=false;
+  momotaroState.peachShooter=p;
+
+  // This shot cannot be keeper-trapped before the post.
+  ball.developedPierce=true;
+  ball.developedPierceShooter=p;
+  showMessage("桃・天弧！",.42);
+  return true;
+}
+
+function updateMomotaroBattle(dt){
+  if(gameMode!=="momotaro") return;
+
+  if(momotaroState.peachShot && !ball.owner){
+    momotaroState.peachSpin+=dt*28;
+
+    // Before impact, continually home toward the selected post.
+    if(!momotaroState.peachHitPost){
+      const tx=COURT.x+2;
+      const ty=momotaroState.peachTargetPostY;
+      const n=norm(tx-ball.x,ty-ball.y);
+      const speed=Math.max(1080,Math.hypot(ball.vx,ball.vy));
+      ball.vx=lerp(ball.vx,n.x*speed,dt*7.5);
+      ball.vy=lerp(ball.vy,n.y*speed,dt*7.5);
+
+      if(Math.hypot(ball.x-tx,ball.y-ty)<24){
+        momotaroState.peachHitPost=true;
+        // Rebound explicitly toward the inside of the goal.
+        const inside=norm((COURT.x-38)-ball.x,(H/2)-ball.y);
+        ball.vx=inside.x*1040;
+        ball.vy=inside.y*1040;
+        ball.vz=Math.min(ball.vz,22);
+        showMessage("POST IN!",.28);
+      }
+    }else{
+      // After post impact, keep it pulling into the net until goal detection.
+      const inside=norm((COURT.x-42)-ball.x,(H/2)-ball.y);
+      const speed=Math.max(900,Math.hypot(ball.vx,ball.vy));
+      ball.vx=lerp(ball.vx,inside.x*speed,dt*12);
+      ball.vy=lerp(ball.vy,inside.y*speed,dt*12);
+    }
+  }
+}
+
+function drawPeachBall(){
+  if(gameMode!=="momotaro" || !momotaroState.peachShot || ball.owner) return false;
+  ctx.save();
+  ctx.translate(ball.x,ball.y);
+  ctx.rotate(momotaroState.peachSpin);
+  ctx.fillStyle="#ff8fa3";
+  ctx.beginPath();
+  ctx.arc(-5,0,10,0,Math.PI*2);
+  ctx.arc(5,0,10,0,Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle="#f7b0bd";
+  ctx.beginPath();ctx.arc(-4,-3,3,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle="#4f9d57";
+  ctx.fillRect(-1,-14,3,7);
+  ctx.restore();
+  return true;
 }
 
 function startOniBattle(){
@@ -776,6 +926,7 @@ function drawOniFieldEffects(){
 }
 
 function renderTeamSelection(){
+  ensureUnlockedBossTeams();
   teamGridEl.innerHTML="";
   const fstUnlocked=isFstUnlocked();
 
@@ -1065,7 +1216,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v130: vertical hazard lines only, evenly spaced.
+  // v131: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -1556,7 +1707,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v130: forward is always the attacking direction, never toward own goal.
+  // v131: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -1812,6 +1963,7 @@ function returnToMainMenu(){
   renderTeamSelection();
   refreshLeagueButton();
   refreshOniBattleButton();
+  refreshMomotaroBattleButton();
   setMenuScreen(teamScreenEl);
 }
 
@@ -1828,6 +1980,7 @@ function renderOniRewardChoices(){
   if(oniRewardPointsLeft<=0){
     tournamentProgressEl.textContent="鬼撃破ボーナス +2 獲得";
     refreshOniBattleButton();
+  refreshMomotaroBattleButton();
     addResultButton("鬼と再戦",true,startOniBattle);
     addResultButton("育成モードへ",false,startDevelopment);
     addResultButton("チーム選択へ",false,returnToMainMenu);
@@ -1847,6 +2000,34 @@ function applyOniRewardPoint(kind){
   saveDevelopmentStats(selectedTeamId,stats);
   oniRewardPointsLeft--;
   renderOniRewardChoices();
+}
+
+
+let momotaroRewardPointsLeft=0;
+
+function renderMomotaroRewardChoices(){
+  const stats=developmentStatsFor(selectedTeamId);
+  developmentInfoEl.textContent=
+    `残り育成ポイント ${momotaroRewardPointsLeft}  /  走力+${stats.speed}  キック力+${stats.kick}  フィジカル+${stats.physical}`;
+  resultActionsEl.innerHTML="";
+  if(momotaroRewardPointsLeft<=0){
+    tournamentProgressEl.textContent="桃太郎撃破ボーナス +3 獲得 / 鬼・桃太郎チーム解禁";
+    addResultButton("桃太郎と再戦",true,startMomotaroBattle);
+    addResultButton("チーム選択へ",false,returnToMainMenu);
+    return;
+  }
+  tournamentProgressEl.textContent=`桃太郎撃破ボーナス：あと${momotaroRewardPointsLeft}ポイント選択`;
+  addResultButton("走力 +1",true,()=>applyMomotaroRewardPoint("speed"));
+  addResultButton("キック力 +1",true,()=>applyMomotaroRewardPoint("kick"));
+  addResultButton("フィジカル +1",true,()=>applyMomotaroRewardPoint("physical"));
+}
+function applyMomotaroRewardPoint(kind){
+  if(momotaroRewardPointsLeft<=0) return;
+  const stats=developmentStatsFor(selectedTeamId);
+  stats[kind]=(stats[kind]||0)+1;
+  saveDevelopmentStats(selectedTeamId,stats);
+  momotaroRewardPointsLeft--;
+  renderMomotaroRewardChoices();
 }
 
 function finishMatch(){
@@ -1957,6 +2138,7 @@ function finishMatch(){
       clearSavedLeague();
       refreshLeagueButton();
   refreshOniBattleButton();
+  refreshMomotaroBattleButton();
       addResultButton("新しいリーグ戦",true,startLeague);
       addResultButton("チーム選択へ",false,returnToMainMenu);
     }
@@ -1990,8 +2172,23 @@ function finishMatch(){
       }
     }
 
+  }else if(gameMode==="momotaro"){
+    if(scoreBlue>scoreRed){
+      localStorage.setItem(momotaroVictoryKey(),"1");
+      resultTitleEl.textContent="桃太郎撃破！";
+      momotaroRewardPointsLeft=3;
+      renderMomotaroRewardChoices();
+    }else{
+      resultTitleEl.textContent=scoreBlue<scoreRed?"桃太郎に敗北":"DRAW";
+      tournamentProgressEl.textContent="勝利すると育成ポイント+3";
+      addResultButton("桃太郎と再戦",true,startMomotaroBattle);
+      addResultButton("チーム選択へ",false,returnToMainMenu);
+    }
+
   }else if(gameMode==="oni"){
     if(scoreBlue>scoreRed){
+      localStorage.setItem(oniVictoryKey(),"1");
+      refreshMomotaroBattleButton();
       resultTitleEl.textContent="鬼撃破！";
       oniRewardPointsLeft=2;
       renderOniRewardChoices();
@@ -2727,7 +2924,7 @@ function attemptTrap(p, dt) {
 
   if(ball.developedPierce && !ball.owner) return false;
 
-  // v130: TRAP must not vacuum a loose ball from a distance.
+  // v131: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -2779,7 +2976,7 @@ function attemptTrap(p, dt) {
 
     if(input.trap || input.trapPressBuffer>0 || input.trapGraceTimer>0 ||
        (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v130: never stop/snap a ball unless it is genuinely at the feet.
+      // v131: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>50) return false;
 
       ball.owner=p;
@@ -2829,7 +3026,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v130: CPU also needs real contact before claiming/stopping the ball.
+      // v131: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -3320,7 +3517,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v130: any AI field player may shoot when the chance is clearly good.
+  // v131: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3435,6 +3632,22 @@ function aiWithBall(p,dt) {
 }
 
 function updateAI(p,dt) {
+
+  if(gameMode==="momotaro" && p.team==="red" && ball.owner===p && p.role!=="gk"){
+    if(p.momotaroRole==="momotaro"){
+      if(p.cooldown<=0){
+        if(firePeachPostShot(p)){ p.cooldown=.34; return; }
+      }
+    }else if(p.momotaroRole){
+      const momo=momotaroPlayer();
+      if(momo && momo!==p && p.cooldown<=0){
+        doPass(p,momo);
+        p.cooldown=.12;
+        return;
+      }
+    }
+  }
+
 
   if(gameMode==="oni" && p.team==="red" && ball.owner===p && p.role!=="gk"){
     const goalDist=Math.hypot((COURT.x-18)-p.x,(H/2)-p.y);
@@ -3686,7 +3899,7 @@ function blowThroughKeeper(p){
 }
 
 function updateGK(p,dt) {
-  // v130: 鬼蹴・剛 is absolute. No keeper save path may touch it.
+  // v131: 鬼蹴・剛 is absolute. No keeper save path may touch it.
   if(isOniHardPierce()){
     if(dist(p,ball)<70 && ball.z<80){
       blowThroughKeeper(p);
@@ -3694,7 +3907,7 @@ function updateGK(p,dt) {
     return;
   }
 
-  // v130: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
+  // v131: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
   if(ball.developedPierce && !ball.owner && ball.shot && ball.z<70 && dist(p,ball)<58){
     const n=norm(ball.vx,ball.vy);
     p.gkFall=Math.max(p.gkFall||0,1.20);
@@ -3857,7 +4070,32 @@ function triggerOniBlastOnce(x=ball.x,y=ball.y){
   return true;
 }
 
+
+function applyPlayableBossTeamTraits(){
+  const def=TEAM_DEFS.find(t=>t.id===selectedTeamId);
+  if(!def || !def.bossTeam || !bossTeamsUnlocked()) return;
+  if(!(gameMode==="free" || gameMode==="daycup" || gameMode==="deathmatch" ||
+       gameMode==="deathmatch-explosive" || gameMode==="deathmatch-dragon")) return;
+
+  for(const p of teams.blue){
+    if(p._bossTraitsApplied) continue;
+    p._bossTraitsApplied=true;
+    if(def.bossTeam==="oni"){
+      p.oni=true;p.speed*=1.48;p.devKickMult=1.85;p.devPhysical=10;
+    }else{
+      if(p.role==="gk"){p.oni=true;p.momotaroGK=true;p.devPhysical=10;}
+      else{
+        const idx=teams.blue.filter(q=>q.role!=="gk").indexOf(p);
+        p.momotaroRole=idx===0?"momotaro":(["dog","monkey","pheasant"][idx-1]||"dog");
+        p.momotaro=true;p.speed*=idx===0?1.65:2.25;p.devKickMult=idx===0?2:1.25;p.devPhysical=idx===0?10:8;
+      }
+    }
+  }
+}
+
 function updatePhysics(dt) {
+  applyPlayableBossTeamTraits();
+
   if(isOniHardPierce()){
     for(const gk of [...teams.blue,...teams.red]){
       if(gk.role==="gk" && dist(gk,ball)<30 && ball.z<80){
@@ -3892,7 +4130,7 @@ function updatePhysics(dt) {
     }
   }
 
-  // v130: in DEATHMATCH a loose ball must physically reach the feet.
+  // v131: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -4169,7 +4407,7 @@ function registerTimeStopDashTap(){
 
   const now=performance.now();
 
-  // v130: independent hidden-skill counter.
+  // v131: independent hidden-skill counter.
   // Seven taps can be entered within 2.5 seconds.
   timeStopDashTaps=timeStopDashTaps.filter(t=>now-t<=2500);
   timeStopDashTaps.push(now);
@@ -4358,6 +4596,7 @@ function update(dt) {
   if(gameMode==="deathmatch-explosive") updateExplosiveBall(dt);
   if(gameMode==="deathmatch-dragon") updateDragonDeathmatch(dt);
   if(gameMode==="oni") updateOniBattle(dt);
+  if(gameMode==="momotaro") updateMomotaroBattle(dt);
   updatePhysics(dt);
 }
 
@@ -4740,6 +4979,29 @@ function drawPlayer(p) {
     ctx.restore();
   }
 
+
+  if(p.momotaroRole){
+    ctx.save();
+    // Momotaro: white/red headband. Companions: simple ear/crest silhouettes.
+    if(p.momotaroRole==="momotaro"){
+      ctx.fillStyle="#fff";
+      ctx.fillRect(-11,-39,22,4);
+      ctx.fillStyle="#d22";
+      ctx.beginPath();ctx.arc(0,-37,3,0,Math.PI*2);ctx.fill();
+    }else if(p.momotaroRole==="dog"){
+      ctx.fillStyle="#8b5a2b";
+      ctx.beginPath();ctx.moveTo(-9,-37);ctx.lineTo(-15,-48);ctx.lineTo(-3,-40);ctx.fill();
+      ctx.beginPath();ctx.moveTo(9,-37);ctx.lineTo(15,-48);ctx.lineTo(3,-40);ctx.fill();
+    }else if(p.momotaroRole==="monkey"){
+      ctx.strokeStyle="#8b5a2b";ctx.lineWidth=4;
+      ctx.beginPath();ctx.arc(0,12,18,-.3,1.7);ctx.stroke();
+    }else if(p.momotaroRole==="pheasant"){
+      ctx.fillStyle="#2f8f5b";
+      ctx.beginPath();ctx.moveTo(0,-43);ctx.lineTo(5,-55);ctx.lineTo(9,-42);ctx.fill();
+    }
+    ctx.restore();
+  }
+
   ctx.fillStyle="#111827";
   ctx.beginPath();
   ctx.arc(headShift-4,-30,1.7,0,Math.PI*2);
@@ -4756,7 +5018,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v130: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v131: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -4774,6 +5036,8 @@ function drawPlayer(p) {
 }
 
 function drawBall() {
+  if(drawPeachBall()) return;
+
   const shadowScale=clamp(1-ball.z/220,.35,1);
   ctx.save();
   ctx.globalAlpha=.24;
@@ -6014,6 +6278,10 @@ bindMenuTap(oniBattleBtnEl,()=>{
   selectedMatchSeconds=60;
   startOniBattle();
 });
+bindMenuTap(momotaroBattleBtnEl,()=>{
+  selectedMatchSeconds=60;
+  startMomotaroBattle();
+});
 bindMenuTap(time90BtnEl,()=>confirmMatchTime(90));
 bindMenuTap(time60BtnEl,()=>confirmMatchTime(60));
 bindMenuTap(time30BtnEl,()=>confirmMatchTime(30));
@@ -6032,6 +6300,7 @@ bindMenuTap(normalTeamBtnEl,()=>{
   selectedTeamNameEl.textContent=teamDef(selectedTeamId).name;
   refreshLeagueButton();
   refreshOniBattleButton();
+  refreshMomotaroBattleButton();
   menuTransitionLockUntil=performance.now()+420;
   setMenuScreen(modeScreenEl);
 });
@@ -6042,6 +6311,7 @@ bindMenuTap(trainedTeamBtnEl,()=>{
   selectedTeamNameEl.textContent=teamDef(selectedTeamId).name;
   refreshLeagueButton();
   refreshOniBattleButton();
+  refreshMomotaroBattleButton();
   menuTransitionLockUntil=performance.now()+420;
   setMenuScreen(modeScreenEl);
 });
@@ -6111,6 +6381,7 @@ renderTeamSelection();
 selectedTeamNameEl.textContent=teamDef(selectedTeamId).name;
 refreshLeagueButton();
   refreshOniBattleButton();
+  refreshMomotaroBattleButton();
 resetKickoff("blue");
 updateScoreLabel();
 setMenuScreen(teamScreenEl);
@@ -6126,7 +6397,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v130";
+  if(v) v.textContent="v131";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v130";
+  if(b) b.textContent="v131";
 });

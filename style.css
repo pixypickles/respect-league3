@@ -838,3 +838,11 @@ body {
   color:#fff!important;
   opacity:.92;
 }
+
+#momotaroBattleBtn{
+  font-size:.78em;
+  min-height:48px!important;
+  background:linear-gradient(180deg,#fff4f4,#f2b8b8)!important;
+  border-color:#d94a4a!important;
+  color:#7a1720!important;
+}
