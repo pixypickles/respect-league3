@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v129";
+const GAME_VERSION="v130";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -242,7 +242,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v129: selected team + 3 random opponents = 4-team single round robin.
+  // v130: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -449,7 +449,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  // v129: prevent the same touch from falling through into the newly shown screen.
+  // v130: prevent the same touch from falling through into the newly shown screen.
   menuTransitionLockUntil=performance.now()+360;
 
   for(const el of [teamScreenEl,modeScreenEl,matchTimeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl]){
@@ -1065,7 +1065,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v129: vertical hazard lines only, evenly spaced.
+  // v130: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -1556,7 +1556,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v129: forward is always the attacking direction, never toward own goal.
+  // v130: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -2723,9 +2723,11 @@ function trapWindowFor(p) {
 }
 
 function attemptTrap(p, dt) {
+  if(isOniHardPierce()) return false;
+
   if(ball.developedPierce && !ball.owner) return false;
 
-  // v129: TRAP must not vacuum a loose ball from a distance.
+  // v130: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -2777,7 +2779,7 @@ function attemptTrap(p, dt) {
 
     if(input.trap || input.trapPressBuffer>0 || input.trapGraceTimer>0 ||
        (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v129: never stop/snap a ball unless it is genuinely at the feet.
+      // v130: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>50) return false;
 
       ball.owner=p;
@@ -2827,7 +2829,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v129: CPU also needs real contact before claiming/stopping the ball.
+      // v130: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -3318,7 +3320,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v129: any AI field player may shoot when the chance is clearly good.
+  // v130: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3572,6 +3574,8 @@ function updateAI(p,dt) {
 
 
 function fallenGKCanTouchBall(p){
+  if(isOniHardPierce()) return false;
+
   if(!p || p.role!=="gk" || p.gkFall<=0) return true;
 
   if(p.controlled){
@@ -3591,6 +3595,8 @@ function fallenGKCanTouchBall(p){
 }
 
 function fallenGKParry(p){
+  if(isOniHardPierce()) return false;
+
   const n=norm(ball.x-p.x,ball.y-p.y);
   const speed=Math.max(160,Math.hypot(ball.vx,ball.vy)*.55);
   ball.owner=null;
@@ -3609,6 +3615,8 @@ function fallenGKParry(p){
 
 
 function gkTimedTrickSave(p){
+  if(isOniHardPierce()) return false;
+
   if(!p || p.role!=="gk") return false;
 
   const protectedBall =
@@ -3654,8 +3662,39 @@ function gkTimedTrickSave(p){
   return true;
 }
 
+
+function isOniHardPierce(){
+  return gameMode==="oni" &&
+         ball.developedPierce &&
+         !ball.owner &&
+         ball.shot &&
+         ball.developedPierceShooter &&
+         ball.developedPierceShooter.oni;
+}
+
+function blowThroughKeeper(p){
+  const n=norm(ball.vx,ball.vy);
+  p.gkFall=Math.max(p.gkFall||0,1.35);
+  p.stagger=Math.max(p.stagger||0,1.1);
+  p.vx=n.x*560;
+  p.vy=n.y*260;
+  ball.owner=null;
+  ball.shot=true;
+  ball.developedPierce=true;
+  ball.vx=n.x*Math.max(980,Math.hypot(ball.vx,ball.vy)*.995);
+  ball.vy=n.y*Math.max(980,Math.hypot(ball.vx,ball.vy)*.995);
+}
+
 function updateGK(p,dt) {
-  // v129: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
+  // v130: 鬼蹴・剛 is absolute. No keeper save path may touch it.
+  if(isOniHardPierce()){
+    if(dist(p,ball)<70 && ball.z<80){
+      blowThroughKeeper(p);
+    }
+    return;
+  }
+
+  // v130: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
   if(ball.developedPierce && !ball.owner && ball.shot && ball.z<70 && dist(p,ball)<58){
     const n=norm(ball.vx,ball.vy);
     p.gkFall=Math.max(p.gkFall||0,1.20);
@@ -3717,7 +3756,7 @@ function updateGK(p,dt) {
     ball.owner=p;
     ball.vx=ball.vy=ball.vz=0;
     ball.z=0;
-    ball.shot=false;
+    if(!isOniHardPierce()) ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
@@ -3731,7 +3770,7 @@ function updateGK(p,dt) {
       ball.owner=p;
       ball.vx=ball.vy=ball.vz=0;
       ball.z=0;
-      ball.shot=false;
+      if(!isOniHardPierce()) ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
@@ -3751,7 +3790,7 @@ function updateGK(p,dt) {
       ball.vx=awayX*310;
       ball.vy=side*rand(110,210);
       ball.vz=75;
-      ball.shot=false;
+      if(!isOniHardPierce()) ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
@@ -3774,7 +3813,7 @@ function updateGK(p,dt) {
       ball.vx=awayX*285;
       ball.vy=side*rand(120,260);
       ball.vz=72;
-      ball.shot=false;
+      if(!isOniHardPierce()) ball.shot=false;
     ball.developedPierce=false;
     ball.developedPierceShooter=null;
     ball.oniBlastShot=false;
@@ -3819,6 +3858,14 @@ function triggerOniBlastOnce(x=ball.x,y=ball.y){
 }
 
 function updatePhysics(dt) {
+  if(isOniHardPierce()){
+    for(const gk of [...teams.blue,...teams.red]){
+      if(gk.role==="gk" && dist(gk,ball)<30 && ball.z<80){
+        blowThroughKeeper(gk);
+      }
+    }
+  }
+
 
   if(gameMode==="oni" && ball.oniBlastShot && !ball.oniBlastConsumed && !ball.owner){
     for(const q of [...teams.blue,...teams.red]){
@@ -3845,7 +3892,7 @@ function updatePhysics(dt) {
     }
   }
 
-  // v129: in DEATHMATCH a loose ball must physically reach the feet.
+  // v130: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -4122,7 +4169,7 @@ function registerTimeStopDashTap(){
 
   const now=performance.now();
 
-  // v129: independent hidden-skill counter.
+  // v130: independent hidden-skill counter.
   // Seven taps can be entered within 2.5 seconds.
   timeStopDashTaps=timeStopDashTaps.filter(t=>now-t<=2500);
   timeStopDashTaps.push(now);
@@ -4709,7 +4756,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v129: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v130: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -6079,7 +6126,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v129";
+  if(v) v.textContent="v130";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v129";
+  if(b) b.textContent="v130";
 });
