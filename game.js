@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v131";
+const GAME_VERSION="v132";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -254,7 +254,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v131: selected team + 3 random opponents = 4-team single round robin.
+  // v132: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -339,6 +339,18 @@ function unlockFst(){
   try{
     localStorage.setItem(FST_UNLOCK_KEY,"1");
   }catch(e){}
+}
+
+
+function displayOpponentName(){
+  if(gameMode==="oni") return "鬼";
+  if(gameMode==="momotaro") return "桃太郎";
+  return teamDef(opponentTeamId).name;
+}
+function displaySelectedName(){
+  if(selectedTeamId==="oni_team") return "鬼";
+  if(selectedTeamId==="momotaro_team") return "桃太郎";
+  return teamDef(selectedTeamId).name;
 }
 
 function teamDef(id){
@@ -461,7 +473,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  // v131: prevent the same touch from falling through into the newly shown screen.
+  // v132: prevent the same touch from falling through into the newly shown screen.
   menuTransitionLockUntil=performance.now()+360;
 
   for(const el of [teamScreenEl,modeScreenEl,matchTimeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl]){
@@ -596,7 +608,9 @@ let momotaroState={
   peachSpin:0,
   peachTargetPostY:0,
   peachHitPost:false,
-  peachShooter:null
+  peachShooter:null,
+  peachShotId:0,
+  activeShotId:0
 };
 
 function startMomotaroBattle(){
@@ -649,6 +663,8 @@ function firePeachPostShot(p){
   momotaroState.peachTargetPostY=postY;
   momotaroState.peachHitPost=false;
   momotaroState.peachShooter=p;
+  momotaroState.peachShotId++;
+  momotaroState.activeShotId=momotaroState.peachShotId;
 
   // This shot cannot be keeper-trapped before the post.
   ball.developedPierce=true;
@@ -659,6 +675,22 @@ function firePeachPostShot(p){
 
 function updateMomotaroBattle(dt){
   if(gameMode!=="momotaro") return;
+
+  if(momotaroState.peachShot){
+    // Cancel the peach effect as soon as possession/last touch no longer belongs
+    // to Momotaro's special-shot sequence.
+    if(
+      ball.owner ||
+      !momotaroState.peachShooter ||
+      ball.lastTouch!==momotaroState.peachShooter ||
+      !ball.shot
+    ){
+      momotaroState.peachShot=false;
+      momotaroState.peachHitPost=false;
+      momotaroState.activeShotId=0;
+      return;
+    }
+  }
 
   if(momotaroState.peachShot && !ball.owner){
     momotaroState.peachSpin+=dt*28;
@@ -692,7 +724,13 @@ function updateMomotaroBattle(dt){
 }
 
 function drawPeachBall(){
-  if(gameMode!=="momotaro" || !momotaroState.peachShot || ball.owner) return false;
+  if(
+    gameMode!=="momotaro" ||
+    !momotaroState.peachShot ||
+    ball.owner ||
+    !momotaroState.peachShooter ||
+    ball.lastTouch!==momotaroState.peachShooter
+  ) return false;
   ctx.save();
   ctx.translate(ball.x,ball.y);
   ctx.rotate(momotaroState.peachSpin);
@@ -1021,10 +1059,17 @@ function renderOpponentSelection(){
 }
 
 function updateScoreLabel(){
-  scoreEl.textContent=`${teamDef(selectedTeamId).name} ${scoreBlue} - ${scoreRed} ${teamDef(opponentTeamId).name}`;
+  scoreEl.textContent=`${displaySelectedName()} ${scoreBlue} - ${scoreRed} ${displayOpponentName()}`;
 }
 
 function prepareMatch(){
+  if(gameMode==="momotaro"){
+    momotaroState.peachShot=false;
+    momotaroState.peachHitPost=false;
+    momotaroState.peachShooter=null;
+    momotaroState.activeShotId=0;
+  }
+
   const trainedActive=(gameMode==="development" || useTrainedTeam);
   const dev=trainedActive ? developmentStatsFor(selectedTeamId) : {speed:0,kick:0,physical:0};
   for(const p of [...teams.blue,...teams.red]){
@@ -1216,7 +1261,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v131: vertical hazard lines only, evenly spaced.
+  // v132: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -1707,7 +1752,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v131: forward is always the attacking direction, never toward own goal.
+  // v132: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -2309,8 +2354,8 @@ function startPractice(type){
   setupPracticePlayers(type);
   updateScoreLabel();
   scoreEl.textContent=type==="partner"
-    ? `${teamDef(selectedTeamId).name}  2人練習`
-    : `${teamDef(selectedTeamId).name}  ひとり練習`;
+    ? `${displaySelectedName()}  2人練習`
+    : `${displaySelectedName()}  ひとり練習`;
   tutorialHudEl.classList.remove("hidden");
   document.body.classList.add("practice-open");
   hideMenu();
@@ -2465,6 +2510,13 @@ const ball = {
 };
 
 function resetKickoff(team="blue") {
+  if(gameMode==="momotaro"){
+    momotaroState.peachShot=false;
+    momotaroState.peachHitPost=false;
+    momotaroState.peachShooter=null;
+    momotaroState.activeShotId=0;
+  }
+
   // Never carry a time stop into a kickoff.
   timeStopTimer=0;
   timeStopBallFrozen=false;
@@ -2780,6 +2832,13 @@ function kickNearbyLooseBall(p, kind="pass") {
 
 
 function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
+  // v132: Peach homing belongs only to Momotaro's own special shot.
+  if(gameMode==="momotaro" && (!p || p!==momotaroState.peachShooter)){
+    momotaroState.peachShot=false;
+    momotaroState.peachHitPost=false;
+    momotaroState.activeShotId=0;
+  }
+
   if((gameMode==="development" || useTrainedTeam) && p.team==="blue") speed*=p.devKickMult||1;
   const n=norm(dx,dy);
   ball.owner=null;
@@ -2924,7 +2983,7 @@ function attemptTrap(p, dt) {
 
   if(ball.developedPierce && !ball.owner) return false;
 
-  // v131: TRAP must not vacuum a loose ball from a distance.
+  // v132: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -2976,7 +3035,7 @@ function attemptTrap(p, dt) {
 
     if(input.trap || input.trapPressBuffer>0 || input.trapGraceTimer>0 ||
        (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v131: never stop/snap a ball unless it is genuinely at the feet.
+      // v132: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>50) return false;
 
       ball.owner=p;
@@ -3026,7 +3085,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v131: CPU also needs real contact before claiming/stopping the ball.
+      // v132: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -3517,7 +3576,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v131: any AI field player may shoot when the chance is clearly good.
+  // v132: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3899,7 +3958,7 @@ function blowThroughKeeper(p){
 }
 
 function updateGK(p,dt) {
-  // v131: 鬼蹴・剛 is absolute. No keeper save path may touch it.
+  // v132: 鬼蹴・剛 is absolute. No keeper save path may touch it.
   if(isOniHardPierce()){
     if(dist(p,ball)<70 && ball.z<80){
       blowThroughKeeper(p);
@@ -3907,7 +3966,7 @@ function updateGK(p,dt) {
     return;
   }
 
-  // v131: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
+  // v132: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
   if(ball.developedPierce && !ball.owner && ball.shot && ball.z<70 && dist(p,ball)<58){
     const n=norm(ball.vx,ball.vy);
     p.gkFall=Math.max(p.gkFall||0,1.20);
@@ -4130,7 +4189,7 @@ function updatePhysics(dt) {
     }
   }
 
-  // v131: in DEATHMATCH a loose ball must physically reach the feet.
+  // v132: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -4361,7 +4420,7 @@ function goal(who) {
 
   goalPause=1.1;
   sfx("goal");
-  showMessage(`${who==="BLUE"?teamDef(selectedTeamId).name:teamDef(opponentTeamId).name} GOAL!`,1);
+  showMessage(`${who==="BLUE"?displaySelectedName():displayOpponentName()} GOAL!`,1);
   updateScoreLabel();
   ball.owner=null;ball.vx=ball.vy=ball.vz=0;ball.shot=false;
     ball.developedPierce=false;
@@ -4407,7 +4466,7 @@ function registerTimeStopDashTap(){
 
   const now=performance.now();
 
-  // v131: independent hidden-skill counter.
+  // v132: independent hidden-skill counter.
   // Seven taps can be entered within 2.5 seconds.
   timeStopDashTaps=timeStopDashTaps.filter(t=>now-t<=2500);
   timeStopDashTaps.push(now);
@@ -4603,24 +4662,29 @@ function update(dt) {
 function drawCourt() {
   const greenField=gameMode==="deathmatch-dragon" || gameMode==="deathmatch-explosive";
   const oniField=gameMode==="oni";
+  const momotaroField=gameMode==="momotaro";
   const electricIndoor=gameMode==="deathmatch";
 
-  ctx.fillStyle=oniField ? "#2b1a1f" : (greenField ? "#4b9652" : (electricIndoor ? "#aebbd0" : "#d59a62"));
+  ctx.fillStyle=momotaroField ? "#b77f86" : (oniField ? "#2b1a1f" : (greenField ? "#4b9652" : (electricIndoor ? "#aebbd0" : "#d59a62")));
   ctx.fillRect(0,0,W,H);
 
   // Special arenas: green turf for explosive/dragon, pale blue-gray indoor floor for electric.
   for(let y=0;y<H;y+=30){
-    ctx.fillStyle = greenField
-      ? ((Math.floor(y/30)%2===0) ? "rgba(255,255,255,.045)" : "rgba(0,60,20,.055)")
-      : electricIndoor
-        ? ((Math.floor(y/30)%2===0) ? "rgba(255,255,255,.075)" : "rgba(55,70,105,.055)")
-        : ((Math.floor(y/30)%2===0) ? "rgba(255,255,255,.035)" : "rgba(0,0,0,.025)");
+    ctx.fillStyle = momotaroField
+      ? ((Math.floor(y/30)%2===0) ? "rgba(255,235,240,.10)" : "rgba(95,35,55,.07)")
+      : greenField
+        ? ((Math.floor(y/30)%2===0) ? "rgba(255,255,255,.045)" : "rgba(0,60,20,.055)")
+        : electricIndoor
+          ? ((Math.floor(y/30)%2===0) ? "rgba(255,255,255,.075)" : "rgba(55,70,105,.055)")
+          : ((Math.floor(y/30)%2===0) ? "rgba(255,255,255,.035)" : "rgba(0,0,0,.025)");
     ctx.fillRect(0,y,W,30);
   }
   for(let x=0;x<W;x+=120){
-    ctx.strokeStyle=greenField
-      ? "rgba(20,80,35,.18)"
-      : electricIndoor ? "rgba(70,82,120,.16)" : "rgba(90,45,20,.12)";
+    ctx.strokeStyle=momotaroField
+      ? "rgba(105,38,58,.18)"
+      : greenField
+        ? "rgba(20,80,35,.18)"
+        : electricIndoor ? "rgba(70,82,120,.16)" : "rgba(90,45,20,.12)";
     ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();
   }
@@ -5018,7 +5082,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v131: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v132: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -5138,12 +5202,49 @@ function drawTimeStopEffect(){
 
   ctx.restore();
 }
+
+function drawMomotaroFieldEffects(){
+  if(gameMode!=="momotaro") return;
+
+  ctx.save();
+
+  // Soft peach haze.
+  ctx.fillStyle="rgba(255,205,218,.08)";
+  ctx.fillRect(0,0,W,H);
+
+  // Cherry-blossom-like petal marks around the outer court.
+  ctx.fillStyle="rgba(255,225,235,.28)";
+  const petals=[
+    [COURT.x+55,COURT.y+40],[COURT.x+COURT.w-65,COURT.y+55],
+    [COURT.x+85,COURT.y+COURT.h-45],[COURT.x+COURT.w-90,COURT.y+COURT.h-50],
+    [W/2-170,COURT.y+28],[W/2+170,COURT.y+COURT.h-28]
+  ];
+  for(const [x,y] of petals){
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.rotate(.55);
+    ctx.beginPath();
+    ctx.ellipse(-5,0,8,4,0,0,Math.PI*2);
+    ctx.ellipse(5,0,8,4,0,0,Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // Warm red-pink court-line glow.
+  ctx.strokeStyle="rgba(255,205,215,.52)";
+  ctx.lineWidth=2.5;
+  ctx.strokeRect(COURT.x,COURT.y,COURT.w,COURT.h);
+
+  ctx.restore();
+}
+
 function draw() {
   ctx.clearRect(0,0,W,H);
   drawCourt();
   if(gameMode==="deathmatch") drawDeathmatchEffects();
   if(gameMode==="deathmatch-dragon") drawDragonEffects();
   if(gameMode==="oni") drawOniFieldEffects();
+  if(gameMode==="momotaro") drawMomotaroFieldEffects();
   if(gameMode==="deathmatch-explosive") drawGenericExplosion();
 
   // sort by y for a tiny bit of depth
@@ -6297,7 +6398,7 @@ bindMenuTap(normalTeamBtnEl,()=>{
   if(pendingSelectedTeamId) selectedTeamId=pendingSelectedTeamId;
   useTrainedTeam=false;
   pendingSelectedTeamId=null;
-  selectedTeamNameEl.textContent=teamDef(selectedTeamId).name;
+  selectedTeamNameEl.textContent=displaySelectedName();
   refreshLeagueButton();
   refreshOniBattleButton();
   refreshMomotaroBattleButton();
@@ -6308,7 +6409,7 @@ bindMenuTap(trainedTeamBtnEl,()=>{
   if(pendingSelectedTeamId) selectedTeamId=pendingSelectedTeamId;
   useTrainedTeam=true;
   pendingSelectedTeamId=null;
-  selectedTeamNameEl.textContent=teamDef(selectedTeamId).name;
+  selectedTeamNameEl.textContent=displaySelectedName();
   refreshLeagueButton();
   refreshOniBattleButton();
   refreshMomotaroBattleButton();
@@ -6378,7 +6479,7 @@ opponentBackBtnEl.addEventListener("click",()=>{
 });
 
 renderTeamSelection();
-selectedTeamNameEl.textContent=teamDef(selectedTeamId).name;
+selectedTeamNameEl.textContent=displaySelectedName();
 refreshLeagueButton();
   refreshOniBattleButton();
   refreshMomotaroBattleButton();
@@ -6397,7 +6498,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v131";
+  if(v) v.textContent="v132";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v131";
+  if(b) b.textContent="v132";
 });
