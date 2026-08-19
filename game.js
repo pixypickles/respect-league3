@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v123";
+const GAME_VERSION="v124";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -236,7 +236,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v123: selected team + 3 random opponents = 4-team single round robin.
+  // v124: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -441,7 +441,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  // v123: prevent the same touch from falling through into the newly shown screen.
+  // v124: prevent the same touch from falling through into the newly shown screen.
   menuTransitionLockUntil=performance.now()+360;
 
   for(const el of [teamScreenEl,modeScreenEl,matchTimeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl]){
@@ -596,6 +596,7 @@ function updateOniBattle(dt){
     // Active flame burst.
     for(const p of [...teams.blue,...teams.red]){
       if(Math.hypot(p.x-z.x,p.y-z.y)<54){
+        if(p.oni) continue;
         if(hasDevelopedSuperPhysical && hasDevelopedSuperPhysical(p)) continue;
         const n=norm(p.x-z.x,p.y-z.y);
         p.stagger=Math.max(p.stagger||0,1.0);
@@ -979,7 +980,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v123: vertical hazard lines only, evenly spaced.
+  // v124: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -1470,7 +1471,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v123: forward is always the attacking direction, never toward own goal.
+  // v124: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -2631,7 +2632,7 @@ function trapWindowFor(p) {
 function attemptTrap(p, dt) {
   if(ball.developedPierce && !ball.owner) return false;
 
-  // v123: TRAP must not vacuum a loose ball from a distance.
+  // v124: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -2683,7 +2684,7 @@ function attemptTrap(p, dt) {
 
     if(input.trap || input.trapPressBuffer>0 || input.trapGraceTimer>0 ||
        (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v123: never stop/snap a ball unless it is genuinely at the feet.
+      // v124: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>50) return false;
 
       ball.owner=p;
@@ -2733,7 +2734,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v123: CPU also needs real contact before claiming/stopping the ball.
+      // v124: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -3002,7 +3003,7 @@ function offBallAction(team, type) {
 }
 
 function updateControlled(p,dt) {
-  if(p.stagger>0){
+  if(p.stagger>0 && !p.oni){
     p.vx*=Math.pow(.18,dt);
     p.vy*=Math.pow(.18,dt);
     return;
@@ -3224,7 +3225,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v123: any AI field player may shoot when the chance is clearly good.
+  // v124: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -3349,7 +3350,7 @@ function updateAI(p,dt) {
     const goalDist=Math.hypot(dx,dy);
 
     // Oni are deliberately unfair: shoot very often, even from midfield.
-    if(goalDist<620 && p.cooldown<=0 && Math.random()<dt*3.4){
+    if(goalDist<760 && p.cooldown<=0 && Math.random()<dt*6.0){
       const aimY=goalY+rand(-72,72);
       const n=norm(goalX-p.x,aimY-p.y);
       p.dirX=n.x;p.dirY=n.y;
@@ -3359,7 +3360,7 @@ function updateAI(p,dt) {
       ball.developedPierce=true;
       ball.developedPierceShooter=p;
       markOniCurveShot(p);
-      p.cooldown=.30;
+      p.cooldown=.18;
       return;
     }
   }
@@ -3403,7 +3404,7 @@ function updateAI(p,dt) {
   }
 
   if(p.role==="gk") return;
-  if(p.stagger>0){
+  if(p.stagger>0 && !p.oni){
     p.vx*=Math.pow(.18,dt);
     p.vy*=Math.pow(.18,dt);
     return;
@@ -3684,7 +3685,7 @@ function updatePhysics(dt) {
     }
   }
 
-  // v123: in DEATHMATCH a loose ball must physically reach the feet.
+  // v124: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -3944,7 +3945,7 @@ function registerTimeStopDashTap(){
 
   const now=performance.now();
 
-  // v123: independent hidden-skill counter.
+  // v124: independent hidden-skill counter.
   // Seven taps can be entered within 2.5 seconds.
   timeStopDashTaps=timeStopDashTaps.filter(t=>now-t<=2500);
   timeStopDashTaps.push(now);
@@ -4367,7 +4368,7 @@ function drawPlayer(p) {
   ctx.save();
   ctx.translate(p.x,p.y);
   // Character artwork stays upright on screen. Movement direction does not rotate the head/body.
-  if(p.stagger>0) {
+  if(p.stagger>0 && !p.oni) {
     ctx.rotate(Math.sin(elapsed*35)*.12);
     ctx.strokeStyle=DARK;ctx.lineWidth=7;ctx.lineCap="round";
     ctx.beginPath();
@@ -4504,6 +4505,14 @@ function drawPlayer(p) {
     ctx.fillStyle="#111";
     ctx.fillRect(-20,-10,7,4);
     ctx.fillRect(13,-10,7,4);
+
+    // Tiger-pattern shorts/lower kit too: remove the inherited purple lower half.
+    ctx.fillStyle="#f2c21b";
+    ctx.fillRect(-13,7,26,13);
+    ctx.fillStyle="#111";
+    ctx.fillRect(-10,7,4,13);
+    ctx.fillRect(1,7,4,13);
+    ctx.fillRect(9,7,3,13);
     ctx.restore();
   }
 
@@ -4523,7 +4532,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v123: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v124: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -5887,7 +5896,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v123";
+  if(v) v.textContent="v124";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v123";
+  if(b) b.textContent="v124";
 });
