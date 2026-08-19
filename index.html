@@ -4,21 +4,21 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
   <meta name="theme-color" content="#111827" />
-  <title>Futsal Trap Game v120</title>
+  <title>Futsal Trap Game v121</title>
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="style.css?v=120" />
+  <link rel="stylesheet" href="style.css?v=121" />
 </head>
 <body>
 <div id="bootVersion" style="position:fixed;top:6px;right:8px;z-index:2147483647;
 background:#ffea00;color:#111;border:3px solid #111;border-radius:8px;
-padding:5px 10px;font:bold 18px Arial,sans-serif;line-height:1">v120</div>
+padding:5px 10px;font:bold 18px Arial,sans-serif;line-height:1">v121</div>
   <div id="rotateNotice">スマホを横向きにしてください</div>
 
   <main id="gameWrap">
     <canvas id="game" width="1280" height="720" aria-label="Futsal game"></canvas>
 
     <div id="hud">
-      <div id="score">BLUE 0 - 0 RED</div><div id="versionTag">v120</div>
+      <div id="score">BLUE 0 - 0 RED</div><div id="versionTag">v121</div>
       <div id="clock">03:00</div>
     </div>
 
@@ -74,6 +74,19 @@ padding:5px 10px;font:bold 18px Arial,sans-serif;line-height:1">v120</div>
           <button id="normalTeamBtn" class="menu-button">通常で使う</button>
           <button id="trainedTeamBtn" class="menu-button primary">育成状態で使う</button>
           <button id="trainedChoiceBackBtn" class="menu-button small">戻る</button>
+        </div>
+      </section>
+
+
+      <section id="matchTimeScreen" class="menu-panel hidden">
+        <div class="menu-kicker">MATCH TIME</div>
+        <h1>試合時間</h1>
+        <div id="matchTimeModeName" class="selected-team-name"></div>
+        <div class="mode-buttons match-time-buttons">
+          <button id="time90Btn" class="menu-button primary">90秒</button>
+          <button id="time60Btn" class="menu-button">60秒</button>
+          <button id="time30Btn" class="menu-button mode-green">30秒</button>
+          <button id="matchTimeBackBtn" class="menu-button small">戻る</button>
         </div>
       </section>
 
@@ -145,6 +158,6 @@ padding:5px 10px;font:bold 18px Arial,sans-serif;line-height:1">v120</div>
     </div>
 
   </main>
-<script src="game.js?v=120"></script>
+<script src="game.js?v=121"></script>
 </body>
 </html>

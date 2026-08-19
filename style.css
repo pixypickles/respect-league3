@@ -818,3 +818,13 @@ body {
 #modeScreen .mode-yellow{background:linear-gradient(180deg,#f5c842,#c99408)!important;border-color:#ffe58a!important;color:#172033!important;text-shadow:none!important;order:30}
 #modeScreen .mode-red{background:linear-gradient(180deg,#b51e2d,#6f0d18)!important;border-color:#ef5865!important;order:40}
 #modeScreen #modeBackBtn{order:50}
+
+/* v121 match-time selector */
+#matchTimeScreen .match-time-buttons{
+  max-width:720px;
+  margin:0 auto;
+}
+#matchTimeScreen #time30Btn{
+  background:linear-gradient(180deg,#35a853,#167432);
+  border-color:#91dda4;
+}
