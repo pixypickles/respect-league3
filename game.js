@@ -2878,6 +2878,7 @@ let elapsed = 0;
 let matchLeft = selectedMatchSeconds;
 let scoreBlue = 0, scoreRed = 0;
 let goalPause = 0;
+let pendingKickoffTeam="blue";
 let messageTimer = 0;
 let timeStopTimer=0;
 let timeStopDashTaps=[];
@@ -5307,6 +5308,8 @@ function handleWallsAndGoals() {
 function goal(who) {
   cancelTimeStopForGoal();
 
+  // v162: the team that conceded always takes the next kickoff.
+  pendingKickoffTeam=(who==="BLUE")?"red":"blue";
   goalPause=1.1;
   sfx("goal");
   showMessage(`${who==="BLUE"?displaySelectedName():displayOpponentName()} GOAL!`,1);
