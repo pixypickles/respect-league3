@@ -1244,3 +1244,9 @@ GitHub Pagesへそのまま配置して遊べます。
 - ゴール演出終了後は必ずpendingKickoffTeamから再開
 - 桃太郎/鬼など専用ロスター再構築の後に、キックオフ保持者を最後に再設定
 - 特殊試合のボスAIが再開ボールを奪って連続キックオフする問題を防止
+
+## v164 バージョン表示修正
+- 画面上のversionTagをv164へ更新
+- game.js / style.css のキャッシュバスターもv164へ統一
+- GAME_VERSION定数をv164へ統一
+- DOMContentLoaded時にversionTagへGAME_VERSIONを再反映
