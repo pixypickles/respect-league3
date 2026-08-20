@@ -3048,7 +3048,7 @@ function resetKickoff(team="blue") {
   const starter = team==="blue"?b[0]:r[0];
   input.passCallTimer=0;
   ball.returnRequested=false;
-  ball.owner=starter;
+  ball.owner=null;
   ball.x=starter.x+(team==="blue"?30:-30);
   ball.y=starter.y;
   ball.z=0; ball.vx=ball.vy=ball.vz=0; ball.shot=false;
@@ -3077,6 +3077,18 @@ function resetKickoff(team="blue") {
   }else{
     rebuildPlayableBossTeamsNow();
   }
+
+  // v163: kickoff possession is assigned LAST.
+  // Boss-roster rebuilding must never change which side restarts.
+  ball.owner=starter;
+  ball.lastTouch=starter;
+  ball.passTarget=null;
+  ball.passFrom=null;
+  ball.x=starter.x+(team==="blue"?30:-30);
+  ball.y=starter.y;
+  ball.z=0;
+  ball.vx=ball.vy=ball.vz=0;
+  starter.possessionTime=0;
 
   // v161: Oni Tag room keeps nonparticipants hidden.
   if(gameMode==="oni-tag"){
@@ -5308,8 +5320,8 @@ function handleWallsAndGoals() {
 function goal(who) {
   cancelTimeStopForGoal();
 
-  // v162: the team that conceded always takes the next kickoff.
-  pendingKickoffTeam=(who==="BLUE")?"red":"blue";
+  // v163: the team that conceded always takes the next kickoff.
+  pendingKickoffTeam = (who==="BLUE") ? "red" : "blue";
   goalPause=1.1;
   sfx("goal");
   showMessage(`${who==="BLUE"?displaySelectedName():displayOpponentName()} GOAL!`,1);
@@ -5538,7 +5550,10 @@ function update(dt) {
 
   if(goalPause>0) {
     goalPause-=dt;
-    if(goalPause<=0) resetKickoff(scoreBlue<=scoreRed?"blue":"red");
+    if(goalPause<=0){
+      goalPause=0;
+      resetKickoff(pendingKickoffTeam);
+    }
     return;
   }
 
