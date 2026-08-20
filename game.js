@@ -1,5 +1,5 @@
 const buildBadge=document.getElementById("buildBadge");
-const GAME_VERSION="v150";
+const GAME_VERSION="v151";
 let foulPause=0;
 let pendingFreeKick=null;
 const foulOverlayEl=document.getElementById("foulOverlay");
@@ -268,7 +268,7 @@ function registerLeagueResult(){
 }
 
 function buildDevelopmentState(){
-  // v150: selected team + 3 random opponents = 4-team single round robin.
+  // v151: selected team + 3 random opponents = 4-team single round robin.
   const others=shuffled(TEAM_DEFS.map(t=>t.id).filter(id=>id!==selectedTeamId)).slice(0,3);
   const ids=[selectedTeamId,...others];
 
@@ -492,7 +492,7 @@ const lerp=(a,b,t)=>a+(b-a)*t;
 const rand=(a,b)=>a+Math.random()*(b-a);
 
 function setMenuScreen(which){
-  // v150: prevent the same touch from falling through into the newly shown screen.
+  // v151: prevent the same touch from falling through into the newly shown screen.
   menuTransitionLockUntil=performance.now()+360;
 
   for(const el of [teamScreenEl,modeScreenEl,matchTimeScreenEl,opponentScreenEl,practiceScreenEl,controlsScreenEl,trainedChoiceScreenEl,resultScreenEl,secretInfoScreenEl]){
@@ -1365,7 +1365,7 @@ function registerDayCupPlayerResult(){
 
 
 function setupDeathmatchLines(){
-  // v150: vertical hazard lines only, evenly spaced.
+  // v151: vertical hazard lines only, evenly spaced.
   deathmatchState.lines=[
     {x1:COURT.x+COURT.w*.20,y1:COURT.y+28,x2:COURT.x+COURT.w*.20,y2:COURT.y+COURT.h-28},
     {x1:COURT.x+COURT.w*.40,y1:COURT.y+28,x2:COURT.x+COURT.w*.40,y2:COURT.y+COURT.h-28},
@@ -1474,6 +1474,36 @@ function triggerOniTagBlast(p){
 }
 
 function updateOniTag(dt){
+
+  // Room walls: bounce instead of goals/out-of-bounds.
+  const left=COURT.x+BALL_R+10;
+  const right=COURT.x+COURT.w-BALL_R-10;
+  const top=COURT.y+BALL_R+10;
+  const bottom=COURT.y+COURT.h-BALL_R-10;
+  if(ball.x<left){ball.x=left;ball.vx=Math.abs(ball.vx)*.82;}
+  if(ball.x>right){ball.x=right;ball.vx=-Math.abs(ball.vx)*.82;}
+  if(ball.y<top){ball.y=top;ball.vy=Math.abs(ball.vy)*.82;}
+  if(ball.y>bottom){ball.y=bottom;ball.vy=-Math.abs(ball.vy)*.82;}
+
+  // Easier loose-ball pickup in Oni Tag.
+  if(!ball.owner && ball.z<30){
+    let nearest=null,nearestD=9999;
+    for(const p of oniTagParticipants()){
+      const d=Math.hypot(p.x-ball.x,p.y-ball.y);
+      if(d<nearestD){nearest=p;nearestD=d;}
+    }
+    const speed=Math.hypot(ball.vx,ball.vy);
+    const pickupRadius=speed<170?40:32;
+    if(nearest && nearestD<pickupRadius){
+      ball.owner=nearest;
+      ball.lastTouch=nearest;
+      ball.vx=ball.vy=ball.vz=0;
+      ball.z=0;
+      ball.shot=false;
+      ball.touchGrace=.12;
+    }
+  }
+
   oniTagState.touchLock=Math.max(0,oniTagState.touchLock-dt);
   if(oniTagState.blast){
     oniTagState.blast.t-=dt;oniTagState.blast.r+=dt*300;
@@ -1991,7 +2021,7 @@ function triggerDeathmatchShock(){
 
 
 function bazookaAimDirection(p){
-  // v150: forward is always the attacking direction, never toward own goal.
+  // v151: forward is always the attacking direction, never toward own goal.
   const forwardSign = p.team==="blue" ? 1 : -1;
 
   // No stick input = straight toward opponent goal.
@@ -2219,9 +2249,9 @@ function startMatch(opponentId){
   prepareMatch();
   hideMenu();
 
-  // v150: roster has finished initializing; now force boss graphics/stats.
+  // v151: roster has finished initializing; now force boss graphics/stats.
 
-  // v150: all players now exist; rebuild boss identities from CURRENT selections.
+  // v151: all players now exist; rebuild boss identities from CURRENT selections.
   rebuildPlayableBossTeamsNow();
 }
 
@@ -2823,15 +2853,22 @@ function resetKickoff(team="blue") {
   starter.possessionTime=0;
 
 
-  // v150: preserve current boss-team identities after kickoff reset.
+  // v151: preserve current boss-team identities after kickoff reset.
 
-  // v150: identity assignment must happen last.
+  // v151: identity assignment must happen last.
   if(gameMode==="momotaro"){
     applyDedicatedMomotaroRoster();
   }else if(gameMode==="oni"){
     applyDedicatedOniRoster();
   }else{
     rebuildPlayableBossTeamsNow();
+  }
+
+  // v151: Oni Tag room keeps nonparticipants hidden.
+  if(gameMode==="oni-tag"){
+    for(const p of [...teams.blue,...teams.red]){
+      if(!p.oniTagParticipant){p.x=-5000;p.y=-5000;p.vx=p.vy=0;}
+    }
   }
 }
 
@@ -3144,7 +3181,7 @@ function kickBall(p, dx,dy, speed, lift=0, shot=false, target=null) {
     if(ok) return;
   }
 
-  // v150: Peach homing belongs only to Momotaro's own special shot.
+  // v151: Peach homing belongs only to Momotaro's own special shot.
   if(gameMode==="momotaro" && (!p || p!==momotaroState.peachShooter)){
     momotaroState.peachShot=false;
     momotaroState.peachHitPost=false;
@@ -3295,7 +3332,7 @@ function attemptTrap(p, dt) {
 
   if(ball.developedPierce && !ball.owner) return false;
 
-  // v150: TRAP must not vacuum a loose ball from a distance.
+  // v151: TRAP must not vacuum a loose ball from a distance.
   // Ownership/control is allowed only when the ball is actually at the player's feet.
   const trapBallDistance=Math.hypot(ball.x-p.x,ball.y-p.y);
 
@@ -3347,7 +3384,7 @@ function attemptTrap(p, dt) {
 
     if(input.trap || input.trapPressBuffer>0 || input.trapGraceTimer>0 ||
        (slowLoose && input.actionPriorityTimer<=0 && !input.shootDown && input.postKickNoAutoTrap<=0)) {
-      // v150: never stop/snap a ball unless it is genuinely at the feet.
+      // v151: never stop/snap a ball unless it is genuinely at the feet.
       if(trapBallDistance>50) return false;
 
       ball.owner=p;
@@ -3397,7 +3434,7 @@ function attemptTrap(p, dt) {
     let success = isTarget ? (Math.random() < (speed>550?.78:.97)) : true;
 
     if(success) {
-      // v150: CPU also needs real contact before claiming/stopping the ball.
+      // v151: CPU also needs real contact before claiming/stopping the ball.
       if(trapBallDistance>34) return false;
 
       ball.owner=p;
@@ -3888,7 +3925,7 @@ function cpuShootNow(p){
 }
 
 function aiWithBall(p,dt) {
-  // v150: any AI field player may shoot when the chance is clearly good.
+  // v151: any AI field player may shoot when the chance is clearly good.
   if(!p.controlled && p.possessionTime>.10 && cpuShotOpportunity(p)){
     const urgency=goalkeeperUnavailableAgainst(p.team) ? .82 : .42;
     if(Math.random()<urgency*dt*8 && cpuShootNow(p)) return;
@@ -4003,7 +4040,7 @@ function aiWithBall(p,dt) {
 }
 
 function updateAI(p,dt) {
-  // v150: controlled player must never receive CPU boss decisions.
+  // v151: controlled player must never receive CPU boss decisions.
   if(p.controlled) return;
 
 
@@ -4292,7 +4329,7 @@ function blowThroughKeeper(p){
 }
 
 function updateGK(p,dt) {
-  // v150: 鬼蹴・剛 is absolute. No keeper save path may touch it.
+  // v151: 鬼蹴・剛 is absolute. No keeper save path may touch it.
   if(isOniHardPierce()){
     if(dist(p,ball)<70 && ball.z<80){
       blowThroughKeeper(p);
@@ -4300,7 +4337,7 @@ function updateGK(p,dt) {
     return;
   }
 
-  // v150: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
+  // v151: 鬼蹴・剛 and any developed pierce shot ignore ALL keeper save logic.
   if(ball.developedPierce && !ball.owner && ball.shot && ball.z<70 && dist(p,ball)<58){
     const n=norm(ball.vx,ball.vy);
     p.gkFall=Math.max(p.gkFall||0,1.20);
@@ -4585,7 +4622,7 @@ function applyBossTraitsToSide(side,teamId){
 
 
 function rebuildPlayableBossTeamsNow(){
-  // v150: clearing stale boss identities is universal.
+  // v151: clearing stale boss identities is universal.
   // It must also run for the dedicated Oni/Momotaro boss battles.
   for(const p of [...teams.blue,...teams.red]){
     clearBossVisualFlags(p);
@@ -4621,7 +4658,7 @@ function applyPlayableBossTeamTraits(){
 function updatePhysics(dt) {
   if(ball.explosiveGKLock>0) ball.explosiveGKLock=Math.max(0,ball.explosiveGKLock-dt);
 
-  // v150: Momotaro boss super armor.
+  // v151: Momotaro boss super armor.
   for(const mp of [...teams.blue,...teams.red]){
     if(hasMomotaroSuperArmor(mp)){
       if("stun" in mp) mp.stun=0;
@@ -4668,7 +4705,7 @@ function updatePhysics(dt) {
     }
   }
 
-  // v150: in DEATHMATCH a loose ball must physically reach the feet.
+  // v151: in DEATHMATCH a loose ball must physically reach the feet.
   // Disable the normal generous auto-trap/auto-pickup radius that caused
   // the ball to jump from a distant position to the controlled player.
   const deathmatchLoosePickupRadius=18;
@@ -4946,7 +4983,7 @@ function registerTimeStopDashTap(){
 
   const now=performance.now();
 
-  // v150: independent hidden-skill counter.
+  // v151: independent hidden-skill counter.
   // Seven taps can be entered within 2.5 seconds.
   timeStopDashTaps=timeStopDashTaps.filter(t=>now-t<=2500);
   timeStopDashTaps.push(now);
@@ -5144,7 +5181,41 @@ function update(dt) {
   if(gameMode==="oni-tag") updateOniTag(dt);
 }
 
+
+function drawOniTagRoom(){
+  if(gameMode!=="oni-tag") return false;
+  ctx.save();
+
+  ctx.fillStyle="#c8cdd6";
+  ctx.fillRect(0,0,W,H);
+
+  ctx.fillStyle="#eef1f5";
+  ctx.fillRect(COURT.x,COURT.y,COURT.w,COURT.h);
+
+  ctx.strokeStyle="rgba(80,90,105,.12)";
+  ctx.lineWidth=1;
+  for(let x=COURT.x;x<=COURT.x+COURT.w;x+=80){
+    ctx.beginPath();ctx.moveTo(x,COURT.y);ctx.lineTo(x,COURT.y+COURT.h);ctx.stroke();
+  }
+  for(let y=COURT.y;y<=COURT.y+COURT.h;y+=60){
+    ctx.beginPath();ctx.moveTo(COURT.x,y);ctx.lineTo(COURT.x+COURT.w,y);ctx.stroke();
+  }
+
+  ctx.strokeStyle="#5f6877";
+  ctx.lineWidth=10;
+  ctx.strokeRect(COURT.x,COURT.y,COURT.w,COURT.h);
+
+  ctx.strokeStyle="rgba(110,120,138,.45)";
+  ctx.lineWidth=2;
+  ctx.strokeRect(COURT.x+14,COURT.y+14,COURT.w-28,COURT.h-28);
+
+  ctx.restore();
+  return true;
+}
+
 function drawCourt() {
+  if(drawOniTagRoom()) return;
+
   const greenField=gameMode==="deathmatch-dragon" || gameMode==="deathmatch-explosive" || gameMode==="oni-tag";
   const oniField=gameMode==="oni";
   const momotaroField=gameMode==="momotaro";
@@ -5623,7 +5694,7 @@ function drawMomotaroCharacter(p){
 
 function drawPlayer(p) {
 
-  // v150: dedicated-battle render fallback. Never lets the red boss roster appear purple.
+  // v151: dedicated-battle render fallback. Never lets the red boss roster appear purple.
   if(gameMode==="momotaro" && p.team==="red"){
     if(p.role==="gk" && !p.oni){
       const oldOni=p.oni, oldMGK=p.momotaroGK;
@@ -5634,8 +5705,8 @@ function drawPlayer(p) {
         return;
       }
       // Standing GK continues through normal Oni overlay below.
-      p._v150TempOni=oldOni;
-      p._v150TempMGK=oldMGK;
+      p._v151TempOni=oldOni;
+      p._v151TempMGK=oldMGK;
     }else if(p.role!=="gk" && !p.momotaroRole){
       const field=teams.red.filter(q=>q.role!=="gk");
       const idx=field.indexOf(p);
@@ -5657,11 +5728,11 @@ function drawPlayer(p) {
       p.oni=oldOni;
       return;
     }
-    p._v150TempOni=oldOni;
+    p._v151TempOni=oldOni;
   }
 
 
-  // v150: final render fallback based on the CURRENT selected team IDs.
+  // v151: final render fallback based on the CURRENT selected team IDs.
   const renderKind=bossKindForTeamId(p.team==="blue"?selectedTeamId:opponentTeamId);
 
   if(renderKind==="momotaro" && p.role!=="gk" && !p.momotaroRole){
@@ -5694,7 +5765,7 @@ function drawPlayer(p) {
   }
 
 
-  // v150 render-only fallback: never write identity flags here.
+  // v151 render-only fallback: never write identity flags here.
   const currentSideKind=bossKindForTeamId(p.team==="blue"?selectedTeamId:opponentTeamId);
   if(currentSideKind==="oni" && !p.oni){
     // draw as Oni without permanently changing the player object
@@ -5704,7 +5775,7 @@ function drawPlayer(p) {
     p.oni=oldOni;
   }
 
-    // v150: dedicated sliding graphics for boss characters.
+    // v151: dedicated sliding graphics for boss characters.
   if(p.slide>0){
     if(p.momotaroRole && !p.momotaroGK){
       drawMomotaroSlidingCharacter(p);
@@ -5942,7 +6013,7 @@ function drawPlayer(p) {
   if(gameMode==="deathmatch" &&
      p.role!=="gk" &&
      (p.controlled || p===deathmatchState.enemyBazookaUser)){
-    // v150: enemy bazooka is visibly held toward the left (its attacking direction).
+    // v151: enemy bazooka is visibly held toward the left (its attacking direction).
     const gunDir=(p===deathmatchState.enemyBazookaUser && p.team==="red") ? -1 : 1;
     ctx.strokeStyle="#374151";ctx.lineWidth=8;ctx.lineCap="round";
     ctx.beginPath();ctx.moveTo(10*gunDir,-8);ctx.lineTo(34*gunDir,-12);ctx.stroke();
@@ -5963,13 +6034,13 @@ function drawPlayer(p) {
     delete p._restoreOniAfterDraw;
   }
 
-  if(p._v150TempOni!==undefined){
-    p.oni=p._v150TempOni;
-    delete p._v150TempOni;
+  if(p._v151TempOni!==undefined){
+    p.oni=p._v151TempOni;
+    delete p._v151TempOni;
   }
-  if(p._v150TempMGK!==undefined){
-    p.momotaroGK=p._v150TempMGK;
-    delete p._v150TempMGK;
+  if(p._v151TempMGK!==undefined){
+    p.momotaroGK=p._v151TempMGK;
+    delete p._v151TempMGK;
   }
 }
 
@@ -7385,7 +7456,7 @@ window.addEventListener("DOMContentLoaded",()=>{
 
 window.addEventListener("DOMContentLoaded",()=>{
   const v=document.getElementById("versionTag");
-  if(v) v.textContent="v150";
+  if(v) v.textContent="v151";
   const b=document.getElementById("buildBadge");
-  if(b) b.textContent="v150";
+  if(b) b.textContent="v151";
 });
